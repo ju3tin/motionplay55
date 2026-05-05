@@ -3,15 +3,16 @@
 import React, { useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+// Import adapters directly — do NOT use @solana/wallet-adapter-wallets
+// That barrel package imports WalletConnect which pulls in viem/ox and
+// causes "Critical dependency: expression in require" on every build.
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { clusterApiUrl } from '@solana/web3.js';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Only include wallets with no Node.js/dynamic-require issues.
-  // WalletConnectWalletAdapter pulls in viem/ox which causes the
-  // "Critical dependency: expression in require" warning — exclude it.
   const wallets = useMemo(
     () => [
       new PhantomWalletAdapter(),
