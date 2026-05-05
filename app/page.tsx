@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
@@ -17,9 +17,16 @@ interface Competition {
   finishTime: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const PROGRAM_ID = "2HK29Di58nED836JN14U1bPsxW4q52FLW5knoJEDmYQJ";
+
+// ─── Hydration-safe wallet button ─────────────────────────────────────────────
+
+function ClientWalletButton() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  return <WalletMultiButton />;
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -31,26 +38,21 @@ export default function CompetitionPage() {
     <main style={styles.main}>
       <div style={styles.header}>
         <h1 style={styles.title}>MotionPlay</h1>
-        <WalletMultiButton />
+        <ClientWalletButton />
       </div>
 
-      {/* Tabs */}
       <div style={styles.tabs}>
         {(['create', 'join', 'view'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            style={{
-              ...styles.tab,
-              ...(activeTab === tab ? styles.tabActive : {}),
-            }}
+            style={{ ...styles.tab, ...(activeTab === tab ? styles.tabActive : {}) }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Panels */}
       <div style={styles.panel}>
         {activeTab === 'create' && <CreatePanel wallet={wallet} />}
         {activeTab === 'join'   && <JoinPanel wallet={wallet} />}
@@ -87,7 +89,7 @@ function CreatePanel({ wallet }: { wallet: ReturnType<typeof useWallet> }) {
     try {
       const { Connection, PublicKey, SystemProgram, clusterApiUrl } = await import('@solana/web3.js');
       const { AnchorProvider, BN, Program }                         = await import('@coral-xyz/anchor');
-      const { IDL }                                                  = await import('../idl1');
+      const { IDL }                                                  = await import('@/idl1');
 
       const programId   = new PublicKey(PROGRAM_ID);
       const connection  = new Connection(clusterApiUrl('devnet'), 'confirmed');
@@ -192,8 +194,7 @@ function JoinPanel({ wallet }: { wallet: ReturnType<typeof useWallet> }) {
       const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
       const provider   = new AnchorProvider(connection, wallet as any, { commitment: 'confirmed' });
       const program    = new Program(IDL as any, provider) as any;
-
-      const compPda = new PublicKey(compAddress.trim());
+      const compPda    = new PublicKey(compAddress.trim());
 
       const [vaultPda] = PublicKey.findProgramAddressSync(
         [Buffer.from('vault'), compPda.toBuffer()],
@@ -268,9 +269,9 @@ function ViewPanel({ wallet }: { wallet: ReturnType<typeof useWallet> }) {
         wallet as any ?? { publicKey: null, signTransaction: async (t: any) => t, signAllTransactions: async (t: any) => t },
         { commitment: 'confirmed' }
       );
-      const program  = new Program(IDL as any, provider) as any;
-      const compPda  = new PublicKey(compAddress.trim());
-      const account  = await program.account.competition.fetch(compPda);
+      const program = new Program(IDL as any, provider) as any;
+      const compPda = new PublicKey(compAddress.trim());
+      const account = await program.account.competition.fetch(compPda);
 
       setCompetition({
         pubkey:          compPda.toBase58(),
@@ -364,70 +365,20 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles: Record<string, React.CSSProperties> = {
-  main: {
-    maxWidth: 640,
-    margin: '0 auto',
-    padding: '40px 24px',
-    fontFamily: 'Arial, sans-serif',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 700,
-    margin: 0,
-  },
-  tabs: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 24,
-    borderBottom: '1px solid #e5e7eb',
-    paddingBottom: 0,
-  },
-  tab: {
-    padding: '10px 20px',
-    fontSize: 15,
-    cursor: 'pointer',
-    border: 'none',
-    background: 'none',
-    borderBottom: '2px solid transparent',
-    marginBottom: -1,
-    color: '#6b7280',
-  },
-  tabActive: {
-    borderBottom: '2px solid #9945FF',
-    color: '#9945FF',
-    fontWeight: 600,
-  },
+  main:       { maxWidth: 640, margin: '0 auto', padding: '40px 24px', fontFamily: 'Arial, sans-serif' },
+  header:     { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
+  title:      { fontSize: 28, fontWeight: 700, margin: 0 },
+  tabs:       { display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 },
+  tab:        { padding: '10px 20px', fontSize: 15, cursor: 'pointer', border: 'none', background: 'none', borderBottom: '2px solid transparent', marginBottom: -1, color: '#6b7280' },
+  tabActive:  { borderBottom: '2px solid #9945FF', color: '#9945FF', fontWeight: 600 },
   panel:      { paddingTop: 8 },
   panelTitle: { fontSize: 20, fontWeight: 600, marginBottom: 24, marginTop: 0 },
   label:      { display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 6, color: '#374151' },
-  input: {
-    width: '100%',
-    padding: '10px 12px',
-    fontSize: 15,
-    border: '1px solid #d1d5db',
-    borderRadius: 8,
-    boxSizing: 'border-box',
-    outline: 'none',
-  },
-  button: {
-    marginTop: 8,
-    padding: '12px 28px',
-    fontSize: 15,
-    fontWeight: 600,
-    background: '#9945FF',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-  },
-  meta: { fontSize: 14, color: '#374151' },
-  card: { marginTop: 24, border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' },
-  row:  { display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f3f4f6', fontSize: 14 },
-  rowLabel: { fontWeight: 500, color: '#6b7280', flexShrink: 0, marginRight: 16 },
-  rowValue: { color: '#111827', textAlign: 'right' },
+  input:      { width: '100%', padding: '10px 12px', fontSize: 15, border: '1px solid #d1d5db', borderRadius: 8, boxSizing: 'border-box', outline: 'none' },
+  button:     { marginTop: 8, padding: '12px 28px', fontSize: 15, fontWeight: 600, background: '#9945FF', color: '#fff', border: 'none', borderRadius: 8 },
+  meta:       { fontSize: 14, color: '#374151' },
+  card:       { marginTop: 24, border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' },
+  row:        { display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f3f4f6', fontSize: 14 },
+  rowLabel:   { fontWeight: 500, color: '#6b7280', flexShrink: 0, marginRight: 16 },
+  rowValue:   { color: '#111827', textAlign: 'right' },
 };

@@ -9,8 +9,14 @@ import { clusterApiUrl } from '@solana/web3.js';
 export function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
+  // Only include wallets with no Node.js/dynamic-require issues.
+  // WalletConnectWalletAdapter pulls in viem/ox which causes the
+  // "Critical dependency: expression in require" warning — exclude it.
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+    ],
     []
   );
 
