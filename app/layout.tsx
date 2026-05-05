@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google';
-import './globals.css';
-// Wallet adapter CSS must live in the root layout, not in providers
+import dynamic from 'next/dynamic';
 import '@solana/wallet-adapter-react-ui/styles.css';
-import { Providers } from '../providers';
+import './globals.css';
 
-const geist = Geist({ subsets: ['latin'] });
+// Never render wallet providers on the server — they need browser APIs
+const Providers = dynamic(
+  () => import('../providers').then((m) => m.Providers),
+  { ssr: false }
+);
 
 export const metadata: Metadata = {
   title: 'MotionPlay',
@@ -15,7 +17,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={geist.className}>
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>
