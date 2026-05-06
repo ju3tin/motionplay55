@@ -50,7 +50,7 @@ export default function Page() {
         const leftAnkle = keypoints.find(k => k.name === 'left_ankle');
         const rightAnkle = keypoints.find(k => k.name === 'right_ankle');
 
-        if (nose && leftAnkle && rightAnkle) {
+        if (nose && leftAnkle && rightAnkle && nose.y !== undefined && leftAnkle.y !== undefined && rightAnkle.y !== undefined) {
           const avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
           // If nose is higher than ankle by threshold, consider jumping
           if (nose.y < avgAnkleY - 50 && !jumping) {
@@ -78,7 +78,7 @@ export default function Page() {
       // Draw keypoints
       poses.forEach(pose => {
         pose.keypoints.forEach(k => {
-          if (k.score > 0.3) {
+          if ((k.score ?? 0) > 0.3 && k.x !== undefined && k.y !== undefined) {
             ctx.beginPath();
             ctx.arc(k.x, k.y, 5, 0, 2 * Math.PI);
             ctx.fillStyle = 'red';
@@ -100,7 +100,11 @@ export default function Page() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
       <h1 className="text-3xl font-bold mb-4">Jump Game 🕹️</h1>
       <div className="relative">
-        <video ref={videoRef} className="absolute top-0 left-0 w-full h-full" style={{ transform: 'scaleX(-1)' }} />
+        <video
+          ref={videoRef}
+          className="absolute top-0 left-0 w-full h-full"
+          style={{ transform: 'scaleX(-1)' }}
+        />
         <canvas ref={canvasRef} className="w-[640px] h-[480px] relative" />
       </div>
       <p className="mt-4">Jump to score points! Your score: {score}</p>
