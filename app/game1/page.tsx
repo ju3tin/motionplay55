@@ -11,13 +11,14 @@ export default function Page() {
   const [detector, setDetector] = useState<posedetection.PoseDetector | null>(null);
   const [score, setScore] = useState(0);
   const [jumping, setJumping] = useState(false);
+
+  // Handle window resize / orientation
   const [canvasSize, setCanvasSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   useEffect(() => {
     const handleResize = () => {
       setCanvasSize({ width: window.innerWidth, height: window.innerHeight });
     };
-
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -53,7 +54,7 @@ export default function Page() {
       const poses = await detector.estimatePoses(video);
       drawCanvas(poses);
 
-      // Game logic: detect jump
+      // Jump detection logic
       if (poses[0]) {
         const keypoints = poses[0].keypoints;
         const nose = keypoints.find(k => k.name === 'nose');
@@ -69,7 +70,6 @@ export default function Page() {
           rightAnkle.y !== undefined
         ) {
           const avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
-          // Jump detected
           if (nose.y < avgAnkleY - 50 && !jumping) {
             setJumping(true);
             setScore(prev => prev + 1);
@@ -87,7 +87,7 @@ export default function Page() {
       const ctx = canvas.getContext('2d')!;
       const video = videoRef.current!;
 
-      // Calculate scale to maintain aspect ratio
+      // Maintain aspect ratio
       const videoAspect = video.videoWidth / video.videoHeight;
       const windowAspect = canvasSize.width / canvasSize.height;
 
@@ -103,16 +103,15 @@ export default function Page() {
       canvas.width = drawWidth;
       canvas.height = drawHeight;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, drawWidth, drawHeight);
+      ctx.drawImage(video, 0, 0, drawWidth, drawHeight);
 
       // Draw keypoints
       poses.forEach(pose => {
         pose.keypoints.forEach(k => {
           if ((k.score ?? 0) > 0.3 && k.x !== undefined && k.y !== undefined) {
-            // Scale keypoints to canvas size
-            const x = (k.x / video.videoWidth) * canvas.width;
-            const y = (k.y / video.videoHeight) * canvas.height;
+            const x = (k.x / video.videoWidth) * drawWidth;
+            const y = (k.y / video.videoHeight) * drawHeight;
             ctx.beginPath();
             ctx.arc(x, y, 5, 0, 2 * Math.PI);
             ctx.fillStyle = 'red';
@@ -131,18 +130,17 @@ export default function Page() {
   }, [detector, jumping, score, canvasSize]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white overflow-hidden">
+    <div className="flex flex-col items-center justify-center w-screen h-screen bg-gray-900 text-white overflow-hidden">
       <h1 className="text-3xl font-bold mb-4 z-10 relative">Jump Game 🕹️</h1>
       <div className="relative w-full h-full">
         <video
           ref={videoRef}
           className="absolute top-0 left-0 w-full h-full"
-          style={{ transform: 'scaleX(-1)', display: 'none' }} // hide raw video
+          style={{ display: 'none' }}
         />
         <canvas
           ref={canvasRef}
           className="absolute top-0 left-0"
-          style={{ width: '100%', height: '100%' }}
         />
       </div>
       <p className="mt-4 z-10 relative">Jump to score points! Your score: {score}</p>
