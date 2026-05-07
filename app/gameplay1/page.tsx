@@ -211,7 +211,130 @@ function PlayChallengeInner() {
 
   return (
   <>
-    <style jsx>{` `}</style>
+    <style jsx>{`
+    
+    
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(to bottom, #0f0f1a, #1a1a2e);
+      color: white;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      padding: 12px 20px;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stats {
+      display: flex;
+      gap: 24px;
+      font-size: 1.1rem;
+    }
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #game-area {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+    video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      opacity: 0.25;
+      pointer-events: none;
+    }
+    .target {
+      position: absolute;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease-out;
+      pointer-events: none;
+    }
+    .target.hit {
+      transform: scale(1.6) rotate(15deg);
+      opacity: 0;
+    }
+    .target:not(.hit) {
+      animation: pulse 1.5s infinite alternate;
+    }
+    @keyframes pulse {
+      from { transform: scale(1); }
+      to   { transform: scale(1.12); }
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: 10;
+    }
+    .card {
+      background: rgba(30,30,50,0.9);
+      border: 1px solid #444;
+      border-radius: 16px;
+      padding: 32px 40px;
+      max-width: 420px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    h1 { font-size: 2.8rem; margin: 0 0 16px; }
+    .countdown { font-size: 18rem; font-weight: 900; color: #00d4ff; }
+    button {
+      background: #0066ff;
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      font-size: 1.2rem;
+      border-radius: 12px;
+      cursor: pointer;
+      margin: 8px;
+      transition: all 0.2s;
+    }
+    button:hover { background: #3385ff; transform: translateY(-2px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .small-btn {
+      padding: 10px 20px;
+      font-size: 1rem;
+    }
+    .pause-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #666;
+      backdrop-filter: blur(4px);
+      padding: 12px;
+      border-radius: 50%;
+      z-index: 20;
+    }
+    
+    
+    `}</style>
     <main style={s.main}>
 
 
