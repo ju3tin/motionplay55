@@ -193,7 +193,7 @@ function PlayChallengeInner() {
 <div id="game-area">
   <video id="video" autoplay playsinline muted></video>
 
-  <!-- Overlays -->
+
   <div id="idle" class="overlay">
     <div class="card">
       <h1>Punch Targets</h1>
