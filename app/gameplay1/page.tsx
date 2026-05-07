@@ -210,6 +210,8 @@ function PlayChallengeInner() {
   
 
   return (
+    <>
+      <style jsx></style>
     <main style={s.main}>
 
 
@@ -557,6 +559,7 @@ function GameSlot({ gameId, hasComp, onScore }: { gameId: number; hasComp: boole
         </>
       )}
     </div>
+    </>
   );
 }
 
