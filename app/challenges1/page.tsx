@@ -282,7 +282,7 @@ export default function CompetitionsPage() {
             const jStatus    = joinStatus[comp.pubkey] ?? '';
             const isCreator  = wallet.publicKey?.toBase58() === comp.creator;
             const hasJoined  = joinedComps.has(comp.pubkey);
-            const playUrl    = `/play?comp=${encodeURIComponent(comp.pubkey)}&gameId=${comp.gameId}`;
+            const playUrl    = `/gameplay?comp=${encodeURIComponent(comp.pubkey)}&gameId=${comp.gameId}`;
 
             return (
               <div key={comp.pubkey} style={{
