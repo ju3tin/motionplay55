@@ -211,7 +211,7 @@ function PlayChallengeInner() {
 
   return (
     <>
-      <style jsx></style>
+      <style jsx>{` `}</style>
     <main style={s.main}>
 
 
