@@ -182,63 +182,186 @@ function PlayChallengeInner() {
 
 
 <header>
-  <button onclick="window.location.href='/'">← Back</button>
-  <div class="stats" id="stats" style="display:none;">
-    <div class="stat"><span>⏱</span> <span id="timer">01:00</span></div>
-    <div class="stat"><span>⚡</span> <span id="combo">0</span></div>
-    <div class="stat"><span>🏆</span> <span id="score">0</span></div>
+  <button onClick={() => (window.location.href = "/")}>
+    ← Back
+  </button>
+
+  <div
+    className="stats"
+    id="stats"
+    style={{ display: "none" }}
+  >
+    <div className="stat">
+      <span>⏱</span>
+      <span id="timer">01:00</span>
+    </div>
+
+    <div className="stat">
+      <span>⚡</span>
+      <span id="combo">0</span>
+    </div>
+
+    <div className="stat">
+      <span>🏆</span>
+      <span id="score">0</span>
+    </div>
   </div>
 </header>
 
 <div id="game-area">
-  <video id="video" autoplay playsinline muted></video>
+  <video
+    id="video"
+    autoPlay
+    playsInline
+    muted
+  />
 
-
-  <div id="idle" class="overlay">
-    <div class="card">
+  <div id="idle" className="overlay">
+    <div className="card">
       <h1>Punch Targets</h1>
-      <p style="margin:16px 0; color:#aaa;">
-        Use your hands to punch targets!<br>
-        Build combos for bonus points.<br>
+
+      <p
+        style={{
+          margin: "16px 0",
+          color: "#aaa",
+        }}
+      >
+        Use your hands to punch targets!
+        <br />
+        Build combos for bonus points.
+        <br />
         60 seconds challenge.
       </p>
-      <p id="errorMsg" style="color:#ff5555; margin:12px 0;"></p>
-      <button id="startBtn" onclick="startGame()">Start Game</button>
+
+      <p
+        id="errorMsg"
+        style={{
+          color: "#ff5555",
+          margin: "12px 0",
+        }}
+      />
+
+      <button
+        id="startBtn"
+        onClick={startGame}
+      >
+        Start Game
+      </button>
     </div>
   </div>
 
-  <div id="countdown" class="overlay" style="display:none;">
-    <div id="count" class="countdown">3</div>
-  </div>
-
-  <div id="paused" class="overlay" style="display:none;">
-    <div class="card">
-      <h2 style="font-size:3rem; margin-bottom:32px;">PAUSED</h2>
-      <button onclick="resumeGame()">Resume</button>
-      <button onclick="window.location.reload()" style="background:#444;">Quit</button>
+  <div
+    id="countdown"
+    className="overlay"
+    style={{ display: "none" }}
+  >
+    <div id="count" className="countdown">
+      3
     </div>
   </div>
 
-  <div id="gameover" class="overlay" style="display:none;">
-    <div class="card">
+  <div
+    id="paused"
+    className="overlay"
+    style={{ display: "none" }}
+  >
+    <div className="card">
+      <h2
+        style={{
+          fontSize: "3rem",
+          marginBottom: "32px",
+        }}
+      >
+        PAUSED
+      </h2>
+
+      <button onClick={resumeGame}>
+        Resume
+      </button>
+
+      <button
+        onClick={() => window.location.reload()}
+        style={{ background: "#444" }}
+      >
+        Quit
+      </button>
+    </div>
+  </div>
+
+  <div
+    id="gameover"
+    className="overlay"
+    style={{ display: "none" }}
+  >
+    <div className="card">
       <h1>Game Over!</h1>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin:32px 0;">
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "20px",
+          margin: "32px 0",
+        }}
+      >
         <div>
-          <div style="color:#aaa; font-size:0.9rem;">Score</div>
-          <div id="finalScore" style="font-size:3.5rem; color:#00d4ff;">0</div>
+          <div
+            style={{
+              color: "#aaa",
+              fontSize: "0.9rem",
+            }}
+          >
+            Score
+          </div>
+
+          <div
+            id="finalScore"
+            style={{
+              fontSize: "3.5rem",
+              color: "#00d4ff",
+            }}
+          >
+            0
+          </div>
         </div>
+
         <div>
-          <div style="color:#aaa; font-size:0.9rem;">Max Combo</div>
-          <div id="finalCombo" style="font-size:3.5rem; color:#ffaa00;">0</div>
+          <div
+            style={{
+              color: "#aaa",
+              fontSize: "0.9rem",
+            }}
+          >
+            Max Combo
+          </div>
+
+          <div
+            id="finalCombo"
+            style={{
+              fontSize: "3.5rem",
+              color: "#ffaa00",
+            }}
+          >
+            0
+          </div>
         </div>
       </div>
-      <button onclick="window.location.reload()">Play Again</button>
+
+      <button onClick={() => window.location.reload()}>
+        Play Again
+      </button>
     </div>
   </div>
 
-  <button id="pauseBtn" class="pause-btn" style="display:none;" onclick="pauseGame()">⏸</button>
+  <button
+    id="pauseBtn"
+    className="pause-btn"
+    style={{ display: "none" }}
+    onClick={pauseGame}
+  >
+    ⏸
+  </button>
 </div>
-
 
 
 
