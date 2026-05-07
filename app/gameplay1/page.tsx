@@ -12,35 +12,7 @@ import * as poseDetection from "@tensorflow-models/pose-detection";
 // Optional backend import
 import "@tensorflow/tfjs-backend-webgl";
 
-export default function Page() {
-  const detectorRef = useRef<any>(null);
 
-  useEffect(() => {
-    loadModel();
-  }, []);
-
-  const loadModel = async () => {
-    try {
-      // ✅ Set TensorFlow backend
-      await tf.setBackend("webgl");
-      await tf.ready();
-
-      // ✅ Create detector
-      detectorRef.current =
-        await poseDetection.createDetector(
-          poseDetection.SupportedModels.MoveNet,
-          {
-            modelType:
-              poseDetection.movenet.modelType
-                .SINGLEPOSE_LIGHTNING,
-          }
-        );
-
-      console.log("Model loaded");
-    } catch (err) {
-      console.error("Model load failed:", err);
-    }
-  };
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -639,6 +611,36 @@ const videoRef = useRef<HTMLVideoElement | null>(null);
   // ──────────────────────────────────────────────
   // JSX
   // ──────────────────────────────────────────────
+
+  const detectorRef = useRef<any>(null);
+
+  useEffect(() => {
+    loadModel();
+  }, []);
+
+  const loadModel = async () => {
+    try {
+      // ✅ Set TensorFlow backend
+      await tf.setBackend("webgl");
+      await tf.ready();
+
+      // ✅ Create detector
+      detectorRef.current =
+        await poseDetection.createDetector(
+          poseDetection.SupportedModels.MoveNet,
+          {
+            modelType:
+              poseDetection.movenet.modelType
+                .SINGLEPOSE_LIGHTNING,
+          }
+        );
+
+      console.log("Model loaded");
+    } catch (err) {
+      console.error("Model load failed:", err);
+    }
+
+
   
 
   return (
