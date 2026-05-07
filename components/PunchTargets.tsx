@@ -456,7 +456,7 @@ function StatBox({ label, value, color }: { label: string; value: number; color:
 // ── Styles ────────────────────────────────────────────────────────────────────
 const css: Record<string, React.CSSProperties> = {
   root: {
-    width: "100%", height: "100%",
+    width: "100%", height: "100vh",
     display: "flex", flexDirection: "column",
     background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)",
     fontFamily: "system-ui, -apple-system, sans-serif",
