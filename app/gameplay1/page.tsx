@@ -177,6 +177,38 @@ function PlayChallengeInner() {
   const missingComp  = !compAddress;
   const missingGame  = !GameComponent;
 
+//added code
+
+  // Refs
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const statsRef = useRef<HTMLDivElement | null>(null);
+  const timerRef = useRef<HTMLSpanElement | null>(null);
+  const comboRef = useRef<HTMLSpanElement | null>(null);
+  const scoreRef = useRef<HTMLSpanElement | null>(null);
+
+  // Game functions
+  const startGame = () => {
+    console.log("Game Started");
+
+    if (statsRef.current) {
+      statsRef.current.style.display = "flex";
+    }
+
+    if (timerRef.current) {
+      timerRef.current.textContent = "01:00";
+    }
+  };
+
+  const resumeGame = () => {
+    console.log("Resume Game");
+  };
+
+  const pauseGame = () => {
+    console.log("Pause Game");
+  };
+// finished
+  
+
   return (
     <main style={s.main}>
 
