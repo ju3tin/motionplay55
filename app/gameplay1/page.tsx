@@ -177,36 +177,430 @@ function PlayChallengeInner() {
   const missingComp  = !compAddress;
   const missingGame  = !GameComponent;
 
-//added code
+const videoRef = useRef<HTMLVideoElement | null>(null);
+  const gameAreaRef = useRef<HTMLDivElement | null>(null);
 
-  // Refs
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const statsRef = useRef<HTMLDivElement | null>(null);
-  const timerRef = useRef<HTMLSpanElement | null>(null);
-  const comboRef = useRef<HTMLSpanElement | null>(null);
-  const scoreRef = useRef<HTMLSpanElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const spawnIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Game functions
-  const startGame = () => {
-    console.log("Game Started");
+  const detectorRef = useRef<any>(null);
 
-    if (statsRef.current) {
-      statsRef.current.style.display = "flex";
-    }
+  // ──────────────────────────────────────────────
+  // STATE
+  // ──────────────────────────────────────────────
+  const [gameState, setGameState] = useState<
+    "idle" | "countdown" | "playing" | "paused" | "ended"
+  >("idle");
 
-    if (timerRef.current) {
-      timerRef.current.textContent = "01:00";
+  const [score, setScore] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [countdown, setCountdown] = useState(3);
+
+  const [targets, setTargets] = useState<any[]>([]);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // ──────────────────────────────────────────────
+  // CONSTANTS
+  // ──────────────────────────────────────────────
+  const GAME_DURATION = 60;
+  const SPAWN_INTERVAL = 800;
+  const TARGET_LIFETIME = 2200;
+  const HIT_RADIUS = 55;
+
+  // ──────────────────────────────────────────────
+  // LOAD MODEL
+  // ──────────────────────────────────────────────
+  const loadModel = async () => {
+    try {
+      // @ts-ignore
+      await tf.setBackend("webgl");
+
+      // @ts-ignore
+      await tf.ready();
+
+      // @ts-ignore
+      detectorRef.current =
+        await poseDetection.createDetector(
+          // @ts-ignore
+          poseDetection.SupportedModels.MoveNet,
+          {
+            modelType: "SinglePose.Lightning",
+          }
+        );
+
+      console.log("Model loaded");
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Failed to load model");
     }
   };
 
-  const resumeGame = () => {
-    console.log("Resume Game");
+  // ──────────────────────────────────────────────
+  // START CAMERA
+  // ──────────────────────────────────────────────
+  const startCamera = async () => {
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+        });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(
+        "Camera access denied or unavailable"
+      );
+    }
   };
 
+  // ──────────────────────────────────────────────
+  // START GAME
+  // ──────────────────────────────────────────────
+  const startGame = async () => {
+    if (gameState !== "idle") return;
+
+    if (!detectorRef.current) {
+      await loadModel();
+    }
+
+    await startCamera();
+
+    setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
+    setTimeLeft(GAME_DURATION);
+    setTargets([]);
+
+    setGameState("countdown");
+
+    let count = 3;
+    setCountdown(count);
+
+    const cd = setInterval(() => {
+      count--;
+
+      setCountdown(count);
+
+      if (count <= 0) {
+        clearInterval(cd);
+
+        setGameState("playing");
+
+        startGameLoop();
+      }
+    }, 1000);
+  };
+
+  // ──────────────────────────────────────────────
+  // SPAWN TARGET
+  // ──────────────────────────────────────────────
+  const spawnTarget = () => {
+    if (
+      !gameAreaRef.current ||
+      gameState !== "playing"
+    )
+      return;
+
+    const rect =
+      gameAreaRef.current.getBoundingClientRect();
+
+    const padding = 90;
+
+    const x =
+      padding +
+      Math.random() *
+        (rect.width - padding * 2);
+
+    const y =
+      padding +
+      Math.random() *
+        (rect.height - padding * 2);
+
+    const radius = 32 + Math.random() * 18;
+
+    const id = Date.now();
+
+    const target = {
+      id,
+      x,
+      y,
+      radius,
+      hit: false,
+    };
+
+    setTargets((prev) => [...prev, target]);
+
+    setTimeout(() => {
+      setTargets((prev) =>
+        prev.filter((t) => t.id !== id)
+      );
+
+      setCombo(0);
+    }, TARGET_LIFETIME);
+  };
+
+  // ──────────────────────────────────────────────
+  // CHECK HIT
+  // ──────────────────────────────────────────────
+  const checkHit = (wx: number, wy: number) => {
+    let hitAny = false;
+
+    setTargets((prev) =>
+      prev.map((t) => {
+        const dist = Math.hypot(
+          wx - t.x,
+          wy - t.y
+        );
+
+        if (
+          !t.hit &&
+          dist < HIT_RADIUS + t.radius
+        ) {
+          hitAny = true;
+
+          return {
+            ...t,
+            hit: true,
+          };
+        }
+
+        return t;
+      })
+    );
+
+    if (hitAny) {
+      setCombo((prev) => {
+        const newCombo = prev + 1;
+
+        setMaxCombo((m) =>
+          Math.max(m, newCombo)
+        );
+
+        setScore(
+          (s) => s + 100 + newCombo * 15
+        );
+
+        return newCombo;
+      });
+    }
+  };
+
+  // ──────────────────────────────────────────────
+  // DETECTION LOOP
+  // ──────────────────────────────────────────────
+  const detect = async () => {
+    if (
+      gameState !== "playing" ||
+      !videoRef.current ||
+      !detectorRef.current ||
+      !gameAreaRef.current
+    )
+      return;
+
+    const video = videoRef.current;
+
+    if (
+      video.readyState >= 2 &&
+      video.videoWidth > 0
+    ) {
+      try {
+        const poses =
+          await detectorRef.current.estimatePoses(
+            video
+          );
+
+        if (poses?.length > 0) {
+          const pose = poses[0];
+
+          const rect =
+            gameAreaRef.current.getBoundingClientRect();
+
+          const scaleX =
+            rect.width / video.videoWidth;
+
+          const scaleY =
+            rect.height / video.videoHeight;
+
+          // LEFT WRIST
+          const lw = pose.keypoints[9];
+
+          if (lw?.score > 0.35) {
+            const x =
+              rect.width - lw.x * scaleX;
+
+            const y = lw.y * scaleY;
+
+            checkHit(x, y);
+          }
+
+          // RIGHT WRIST
+          const rw = pose.keypoints[10];
+
+          if (rw?.score > 0.35) {
+            const x =
+              rect.width - rw.x * scaleX;
+
+            const y = rw.y * scaleY;
+
+            checkHit(x, y);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    animationFrameRef.current =
+      requestAnimationFrame(detect);
+  };
+
+  // ──────────────────────────────────────────────
+  // GAME LOOP
+  // ──────────────────────────────────────────────
+  const startGameLoop = () => {
+    timerIntervalRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    spawnIntervalRef.current = setInterval(
+      spawnTarget,
+      SPAWN_INTERVAL
+    );
+
+    detect();
+  };
+
+  // ──────────────────────────────────────────────
+  // PAUSE
+  // ──────────────────────────────────────────────
   const pauseGame = () => {
-    console.log("Pause Game");
+    setGameState("paused");
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(
+        animationFrameRef.current
+      );
+    }
   };
-// finished
+
+  // ──────────────────────────────────────────────
+  // RESUME
+  // ──────────────────────────────────────────────
+  const resumeGame = () => {
+    setGameState("playing");
+
+    detect();
+  };
+
+  // ──────────────────────────────────────────────
+  // END GAME
+  // ──────────────────────────────────────────────
+  const endGame = async () => {
+    setGameState("ended");
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(
+        animationFrameRef.current
+      );
+    }
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+
+    if (spawnIntervalRef.current) {
+      clearInterval(spawnIntervalRef.current);
+    }
+
+    try {
+      await fetch("/api/leaderboard/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          game_id:
+            "4adfb0a9-2b3b-4716-b02e-8ac3c5a9b261",
+          score,
+          duration_seconds: 60,
+          metadata: {
+            engine: "punchgame",
+            maxCombo,
+          },
+        }),
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // ──────────────────────────────────────────────
+  // CLEANUP
+  // ──────────────────────────────────────────────
+  useEffect(() => {
+    loadModel();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+      }
+
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+
+      if (spawnIntervalRef.current) {
+        clearInterval(
+          spawnIntervalRef.current
+        );
+      }
+
+      if (videoRef.current?.srcObject) {
+        const tracks = (
+          videoRef.current
+            .srcObject as MediaStream
+        ).getTracks();
+
+        tracks.forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  // ──────────────────────────────────────────────
+  // TIMER DISPLAY
+  // ──────────────────────────────────────────────
+  const mins = Math.floor(timeLeft / 60)
+    .toString()
+    .padStart(2, "0");
+
+  const secs = (timeLeft % 60)
+    .toString()
+    .padStart(2, "0");
+
+  // ──────────────────────────────────────────────
+  // JSX
+  // ──────────────────────────────────────────────
   
 
   return (
