@@ -210,7 +210,7 @@ function PlayChallengeInner() {
   
 
   return (
-  
+  <>
     <main style={s.main}>
 
 
@@ -529,6 +529,8 @@ function PlayChallengeInner() {
         </div>
       </div>
     </main>
+
+    </>
   );
 }
 
