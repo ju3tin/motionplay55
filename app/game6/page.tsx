@@ -22,22 +22,24 @@ export default function Page() {
     let interval: NodeJS.Timeout;
 
     const setup = async () => {
-      // TensorFlow backend
       await tf.setBackend("webgl");
       await tf.ready();
 
-      // Front camera
       const stream =
         await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
 
+            // IMPORTANT:
+            // Match phone screen shape
+            aspectRatio: 9 / 16,
+
             width: {
-              ideal: 720,
+              ideal: 1080,
             },
 
             height: {
-              ideal: 1280,
+              ideal: 1920,
             },
           },
 
@@ -52,7 +54,6 @@ export default function Page() {
 
       await video.play();
 
-      // MoveNet
       detectorRef.current =
         await poseDetection.createDetector(
           poseDetection.SupportedModels.MoveNet,
@@ -63,7 +64,6 @@ export default function Page() {
           }
         );
 
-      // Run detection ~10 FPS
       interval = setInterval(detect, 100);
     };
 
@@ -90,28 +90,6 @@ export default function Page() {
       canvas.width = cw;
       canvas.height = ch;
 
-      // Camera dimensions
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-
-      // KEEP FULL CAMERA VISIBLE
-      // (contain instead of cover)
-      const scale = Math.min(
-        cw / vw,
-        ch / vh
-      );
-
-      const drawWidth = vw * scale;
-
-      const drawHeight = vh * scale;
-
-      // Center video
-      const offsetX =
-        (cw - drawWidth) / 2;
-
-      const offsetY =
-        (ch - drawHeight) / 2;
-
       ctx.clearRect(0, 0, cw, ch);
 
       // Mirror selfie camera
@@ -120,31 +98,31 @@ export default function Page() {
       ctx.scale(-1, 1);
       ctx.translate(-cw, 0);
 
-      // Draw camera
-      ctx.drawImage(
-        video,
-        offsetX,
-        offsetY,
-        drawWidth,
-        drawHeight
-      );
+      // FULLSCREEN VIDEO
+      // NO MANUAL SCALING
+      // NO CROP MATH
+      ctx.drawImage(video, 0, 0, cw, ch);
 
-      // Pose detection
+      // Detect poses
       const poses =
         await detector.estimatePoses(video);
 
-      // Draw keypoints
+      // Scale pose points to fullscreen
+      const scaleX =
+        cw / video.videoWidth;
+
+      const scaleY =
+        ch / video.videoHeight;
+
       poses.forEach((pose) => {
         pose.keypoints.forEach((kp) => {
           if (
             kp.score &&
             kp.score > 0.4
           ) {
-            const x =
-              offsetX + kp.x * scale;
+            const x = kp.x * scaleX;
 
-            const y =
-              offsetY + kp.y * scale;
+            const y = kp.y * scaleY;
 
             ctx.beginPath();
 
@@ -188,7 +166,7 @@ export default function Page() {
 
   return (
     <main className="fixed inset-0 bg-black">
-      {/* Hidden source video */}
+      {/* Hidden camera source */}
       <video
         ref={videoRef}
         playsInline
@@ -197,7 +175,7 @@ export default function Page() {
         className="hidden"
       />
 
-      {/* Fullscreen render */}
+      {/* Fullscreen canvas */}
       <canvas
         ref={canvasRef}
         className="w-full h-full"
