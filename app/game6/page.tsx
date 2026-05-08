@@ -21,18 +21,10 @@ export default function Page() {
       await tf.setBackend("webgl");
       await tf.ready();
 
-      tf.env().set("WEBGL_PACK", true);
-
-      // FRONT CAMERA
       const stream =
         await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-
-            // Keep aspect ratio natural
-            aspectRatio: {
-              ideal: 9 / 16,
-            },
 
             width: {
               ideal: 720,
@@ -76,49 +68,65 @@ export default function Page() {
 
       if (video.readyState !== 4) return;
 
-      const poses =
-        await detector.estimatePoses(video);
-
       const ctx = canvas.getContext("2d");
 
       if (!ctx) return;
 
-      // REAL displayed dimensions
-      const displayWidth = video.clientWidth;
-      const displayHeight = video.clientHeight;
+      // FULLSCREEN CANVAS
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
-      // Match canvas to displayed video size
-      if (
-        canvas.width !== displayWidth ||
-        canvas.height !== displayHeight
-      ) {
-        canvas.width = displayWidth;
-        canvas.height = displayHeight;
-      }
+      const cw = canvas.width;
+      const ch = canvas.height;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
 
-      // MIRROR for selfie camera
+      // COVER math (like object-cover)
+      const scale = Math.max(cw / vw, ch / vh);
+
+      const drawWidth = vw * scale;
+      const drawHeight = vh * scale;
+
+      const offsetX = (cw - drawWidth) / 2;
+      const offsetY = (ch - drawHeight) / 2;
+
+      ctx.clearRect(0, 0, cw, ch);
+
+      // MIRROR selfie camera
       ctx.save();
+
       ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
+      ctx.translate(-cw, 0);
 
-      // Scale pose coords correctly
-      const scaleX =
-        canvas.width / video.videoWidth;
+      // DRAW VIDEO INTO CANVAS
+      ctx.drawImage(
+        video,
+        offsetX,
+        offsetY,
+        drawWidth,
+        drawHeight
+      );
 
-      const scaleY =
-        canvas.height / video.videoHeight;
+      // POSE DETECTION
+      const poses =
+        await detector.estimatePoses(video);
 
       poses.forEach((pose) => {
         pose.keypoints.forEach((kp) => {
           if (kp.score && kp.score > 0.4) {
+            const x =
+              offsetX + kp.x * scale;
+
+            const y =
+              offsetY + kp.y * scale;
+
             ctx.beginPath();
 
             ctx.arc(
-              kp.x * scaleX,
-              kp.y * scaleY,
-              5,
+              x,
+              y,
+              6,
               0,
               Math.PI * 2
             );
@@ -151,27 +159,20 @@ export default function Page() {
   }, []);
 
   return (
-    <main className="relative w-screen h-screen bg-black overflow-hidden">
+    <main className="fixed inset-0 bg-black">
+      {/* hidden raw video */}
       <video
         ref={videoRef}
         playsInline
         muted
         autoPlay
-        className="
-          absolute inset-0
-          w-full h-full
-          object-contain
-          scale-x-[-1]
-        "
+        className="hidden"
       />
 
+      {/* fullscreen render */}
       <canvas
         ref={canvasRef}
-        className="
-          absolute inset-0
-          w-full h-full
-          pointer-events-none
-        "
+        className="w-full h-full"
       />
     </main>
   );
