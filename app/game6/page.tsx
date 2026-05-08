@@ -9,18 +9,24 @@ import * as poseDetection from "@tensorflow-models/pose-detection";
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const canvasRef =
+    useRef<HTMLCanvasElement>(null);
 
   const detectorRef =
-    useRef<poseDetection.PoseDetector | null>(null);
+    useRef<poseDetection.PoseDetector | null>(
+      null
+    );
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
     const setup = async () => {
+      // TensorFlow backend
       await tf.setBackend("webgl");
       await tf.ready();
 
+      // Front camera
       const stream =
         await navigator.mediaDevices.getUserMedia({
           video: {
@@ -46,6 +52,7 @@ export default function Page() {
 
       await video.play();
 
+      // MoveNet
       detectorRef.current =
         await poseDetection.createDetector(
           poseDetection.SupportedModels.MoveNet,
@@ -56,15 +63,19 @@ export default function Page() {
           }
         );
 
+      // Run detection ~10 FPS
       interval = setInterval(detect, 100);
     };
 
     const detect = async () => {
       const detector = detectorRef.current;
+
       const video = videoRef.current;
+
       const canvas = canvasRef.current;
 
-      if (!detector || !video || !canvas) return;
+      if (!detector || !video || !canvas)
+        return;
 
       if (video.readyState !== 4) return;
 
@@ -72,34 +83,44 @@ export default function Page() {
 
       if (!ctx) return;
 
-      // FULLSCREEN CANVAS
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // Fullscreen canvas
+      const cw = window.innerWidth;
+      const ch = window.innerHeight;
 
-      const cw = canvas.width;
-      const ch = canvas.height;
+      canvas.width = cw;
+      canvas.height = ch;
 
+      // Camera dimensions
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // COVER math (like object-cover)
-      const scale = Math.max(cw / vw, ch / vh);
+      // KEEP FULL CAMERA VISIBLE
+      // (contain instead of cover)
+      const scale = Math.min(
+        cw / vw,
+        ch / vh
+      );
 
       const drawWidth = vw * scale;
+
       const drawHeight = vh * scale;
 
-      const offsetX = (cw - drawWidth) / 2;
-      const offsetY = (ch - drawHeight) / 2;
+      // Center video
+      const offsetX =
+        (cw - drawWidth) / 2;
+
+      const offsetY =
+        (ch - drawHeight) / 2;
 
       ctx.clearRect(0, 0, cw, ch);
 
-      // MIRROR selfie camera
+      // Mirror selfie camera
       ctx.save();
 
       ctx.scale(-1, 1);
       ctx.translate(-cw, 0);
 
-      // DRAW VIDEO INTO CANVAS
+      // Draw camera
       ctx.drawImage(
         video,
         offsetX,
@@ -108,13 +129,17 @@ export default function Page() {
         drawHeight
       );
 
-      // POSE DETECTION
+      // Pose detection
       const poses =
         await detector.estimatePoses(video);
 
+      // Draw keypoints
       poses.forEach((pose) => {
         pose.keypoints.forEach((kp) => {
-          if (kp.score && kp.score > 0.4) {
+          if (
+            kp.score &&
+            kp.score > 0.4
+          ) {
             const x =
               offsetX + kp.x * scale;
 
@@ -132,6 +157,7 @@ export default function Page() {
             );
 
             ctx.fillStyle = "#00ff00";
+
             ctx.fill();
           }
         });
@@ -153,14 +179,16 @@ export default function Page() {
 
         stream
           .getTracks()
-          .forEach((track) => track.stop());
+          .forEach((track) =>
+            track.stop()
+          );
       }
     };
   }, []);
 
   return (
     <main className="fixed inset-0 bg-black">
-      {/* hidden raw video */}
+      {/* Hidden source video */}
       <video
         ref={videoRef}
         playsInline
@@ -169,7 +197,7 @@ export default function Page() {
         className="hidden"
       />
 
-      {/* fullscreen render */}
+      {/* Fullscreen render */}
       <canvas
         ref={canvasRef}
         className="w-full h-full"
