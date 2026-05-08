@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
 
 import {
   PoseLandmarker,
@@ -17,12 +16,6 @@ export default function Page() {
 
   const landmarkerRef =
     useRef<PoseLandmarker | null>(null);
-
-  const searchParams =
-    useSearchParams();
-
-  const exercise =
-    searchParams.get("exercise") ?? "squat";
 
   useEffect(() => {
     let rafId: number;
@@ -47,7 +40,6 @@ export default function Page() {
         );
 
       video.srcObject = stream;
-
       video.muted = true;
       video.playsInline = true;
 
@@ -68,7 +60,7 @@ export default function Page() {
     };
 
     // -----------------------------
-    // INIT MEDIAPIPE
+    // INIT MEDIAPIPE MODEL (FIXED URL)
     // -----------------------------
     const initModel = async () => {
       const vision =
@@ -82,7 +74,7 @@ export default function Page() {
           {
             baseOptions: {
               modelAssetPath:
-                "https://storage.googleapis.com/mediapipe-models/pose_landmarker/lite/float16/1/pose_landmarker_lite.task",
+                "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
             },
             runningMode: "VIDEO",
             numPoses: 1,
@@ -137,6 +129,13 @@ export default function Page() {
       // legs
       line(23, 25);
       line(25, 27);
+
+      // arms
+      line(11, 13);
+      line(13, 15);
+
+      line(12, 14);
+      line(14, 16);
     };
 
     // -----------------------------
@@ -161,7 +160,6 @@ export default function Page() {
           requestAnimationFrame(
             loop
           );
-
         return;
       }
 
@@ -172,7 +170,6 @@ export default function Page() {
           requestAnimationFrame(
             loop
           );
-
         return;
       }
 
@@ -207,17 +204,14 @@ export default function Page() {
       );
 
       // -----------------------------
-      // MIRROR CAMERA
+      // MIRROR CAMERA (SELFIE MODE)
       // -----------------------------
       ctx.save();
-
       ctx.scale(-1, 1);
-
       ctx.translate(-w, 0);
 
       // -----------------------------
-      // ⭐ DRAW CAMERA (FIX)
-      // THIS WAS YOUR MISSING PIECE
+      // DRAW CAMERA FEED (IMPORTANT)
       // -----------------------------
       ctx.drawImage(
         video,
@@ -228,7 +222,7 @@ export default function Page() {
       );
 
       // -----------------------------
-      // DRAW POSE
+      // DRAW POSE OVERLAY
       // -----------------------------
       if (
         result.landmarks?.length
@@ -249,6 +243,9 @@ export default function Page() {
         );
     };
 
+    // -----------------------------
+    // START
+    // -----------------------------
     const start = async () => {
       await initCamera();
       await initModel();
@@ -259,7 +256,7 @@ export default function Page() {
 
     return () =>
       cancelAnimationFrame(rafId);
-  }, [exercise]);
+  }, []);
 
   return (
     <main className="fixed inset-0 bg-black overflow-hidden">
