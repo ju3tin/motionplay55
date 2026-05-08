@@ -34,7 +34,7 @@ function Calendar({
         month_caption:
           'flex justify-center pt-1 relative items-center',
 
-        month_caption_label:
+        caption_label:
           'text-sm font-medium',
 
         nav: 'space-x-1 flex items-center',
