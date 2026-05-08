@@ -29,18 +29,6 @@ export default function Page() {
         await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-
-            // IMPORTANT:
-            // Match phone screen shape
-            aspectRatio: 9 / 16,
-
-            width: {
-              ideal: 1080,
-            },
-
-            height: {
-              ideal: 1920,
-            },
           },
 
           audio: false,
@@ -51,6 +39,13 @@ export default function Page() {
       if (!video) return;
 
       video.srcObject = stream;
+
+      // WAIT FOR REAL CAMERA SIZE
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => {
+          resolve();
+        };
+      });
 
       await video.play();
 
@@ -77,42 +72,95 @@ export default function Page() {
       if (!detector || !video || !canvas)
         return;
 
-      if (video.readyState !== 4) return;
-
       const ctx = canvas.getContext("2d");
 
       if (!ctx) return;
 
-      // Fullscreen canvas
-      const cw = window.innerWidth;
-      const ch = window.innerHeight;
+      // REAL screen size
+      const screenWidth =
+        window.innerWidth;
 
-      canvas.width = cw;
-      canvas.height = ch;
+      const screenHeight =
+        window.innerHeight;
 
-      ctx.clearRect(0, 0, cw, ch);
+      // REAL camera size
+      const videoWidth =
+        video.videoWidth;
 
-      // Mirror selfie camera
+      const videoHeight =
+        video.videoHeight;
+
+      // Resize canvas
+      canvas.width = screenWidth;
+      canvas.height = screenHeight;
+
+      // Aspect ratios
+      const videoAspect =
+        videoWidth / videoHeight;
+
+      const screenAspect =
+        screenWidth / screenHeight;
+
+      let drawWidth = screenWidth;
+      let drawHeight = screenHeight;
+
+      let offsetX = 0;
+      let offsetY = 0;
+
+      // PERFECT FIT WITHOUT STRETCHING
+      if (videoAspect > screenAspect) {
+        // video wider than screen
+        drawWidth =
+          screenHeight * videoAspect;
+
+        drawHeight = screenHeight;
+
+        offsetX =
+          (screenWidth - drawWidth) / 2;
+      } else {
+        // video taller than screen
+        drawWidth = screenWidth;
+
+        drawHeight =
+          screenWidth / videoAspect;
+
+        offsetY =
+          (screenHeight - drawHeight) / 2;
+      }
+
+      ctx.clearRect(
+        0,
+        0,
+        screenWidth,
+        screenHeight
+      );
+
+      // Mirror front camera
       ctx.save();
 
       ctx.scale(-1, 1);
-      ctx.translate(-cw, 0);
 
-      // FULLSCREEN VIDEO
-      // NO MANUAL SCALING
-      // NO CROP MATH
-      ctx.drawImage(video, 0, 0, cw, ch);
+      ctx.translate(-screenWidth, 0);
 
-      // Detect poses
+      // Draw camera correctly
+      ctx.drawImage(
+        video,
+        offsetX,
+        offsetY,
+        drawWidth,
+        drawHeight
+      );
+
+      // Pose detection
       const poses =
         await detector.estimatePoses(video);
 
-      // Scale pose points to fullscreen
+      // Scale keypoints
       const scaleX =
-        cw / video.videoWidth;
+        drawWidth / videoWidth;
 
       const scaleY =
-        ch / video.videoHeight;
+        drawHeight / videoHeight;
 
       poses.forEach((pose) => {
         pose.keypoints.forEach((kp) => {
@@ -120,9 +168,11 @@ export default function Page() {
             kp.score &&
             kp.score > 0.4
           ) {
-            const x = kp.x * scaleX;
+            const x =
+              offsetX + kp.x * scaleX;
 
-            const y = kp.y * scaleY;
+            const y =
+              offsetY + kp.y * scaleY;
 
             ctx.beginPath();
 
@@ -165,8 +215,8 @@ export default function Page() {
   }, []);
 
   return (
-    <main className="fixed inset-0 bg-black">
-      {/* Hidden camera source */}
+    <main className="fixed inset-0 bg-black overflow-hidden">
+      {/* hidden source */}
       <video
         ref={videoRef}
         playsInline
@@ -175,7 +225,7 @@ export default function Page() {
         className="hidden"
       />
 
-      {/* Fullscreen canvas */}
+      {/* fullscreen render */}
       <canvas
         ref={canvasRef}
         className="w-full h-full"
