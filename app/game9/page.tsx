@@ -17,13 +17,13 @@ export default function Page() {
   const landmarkerRef =
     useRef<PoseLandmarker | null>(null);
 
-  let lastTime = 0;
+  let last = 0;
 
   useEffect(() => {
-    let rafId: number;
+    let raf: number;
 
     // -----------------------------
-    // CAMERA INIT
+    // CAMERA
     // -----------------------------
     const initCamera = async () => {
       const video =
@@ -46,17 +46,16 @@ export default function Page() {
       video.playsInline = true;
 
       await new Promise<void>(
-        (resolve) => {
-          video.onloadedmetadata =
-            () => resolve();
-        }
+        (r) =>
+          (video.onloadedmetadata =
+            () => r())
       );
 
       await video.play();
     };
 
     // -----------------------------
-    // MODEL INIT
+    // MODEL
     // -----------------------------
     const initModel = async () => {
       const vision =
@@ -79,9 +78,35 @@ export default function Page() {
     };
 
     // -----------------------------
-    // STABLE DRAWING (NO STRETCH)
+    // FULL 33-POINT SKELETON
     // -----------------------------
-    const drawSkeleton = (
+    const connections = [
+      [11, 12],
+      [11, 13],
+      [13, 15],
+      [12, 14],
+      [14, 16],
+
+      [11, 23],
+      [12, 24],
+
+      [23, 24],
+
+      [23, 25],
+      [25, 27],
+      [27, 29],
+      [29, 31],
+
+      [24, 26],
+      [26, 28],
+      [28, 30],
+      [30, 32],
+    ];
+
+    // -----------------------------
+    // DRAW (FIXED SCALING)
+    // -----------------------------
+    const draw = (
       ctx: CanvasRenderingContext2D,
       lm: any,
       vw: number,
@@ -89,12 +114,11 @@ export default function Page() {
       cw: number,
       ch: number
     ) => {
-      // aspect-fit (CRITICAL FIX)
       const scale =
-        Math.min(
+        Math.max(
           cw / vw,
           ch / vh
-        );
+        ); // cover (NOT contain)
 
       const offsetX =
         (cw - vw * scale) / 2;
@@ -110,55 +134,34 @@ export default function Page() {
         p.y * vh * scale +
         offsetY;
 
-      const line = (a: number, b: number) => {
+      ctx.strokeStyle =
+        "#00ff00";
+
+      ctx.lineWidth = 2;
+
+      for (
+        const [a, b] of connections
+      ) {
         const p1 = lm[a];
         const p2 = lm[b];
 
-        if (!p1 || !p2) return;
+        if (!p1 || !p2) continue;
 
         ctx.beginPath();
         ctx.moveTo(
           X(p1),
           Y(p1)
         );
-
         ctx.lineTo(
           X(p2),
           Y(p2)
         );
-
-        ctx.strokeStyle =
-          "#00ff00";
-
-        ctx.lineWidth = 2;
-
         ctx.stroke();
-      };
-
-      // torso
-      line(11, 13);
-      line(13, 15);
-
-      line(12, 14);
-      line(14, 16);
-
-      line(11, 23);
-      line(12, 24);
-
-      // legs
-      line(23, 25);
-      line(25, 27);
-
-      // arms
-      line(11, 13);
-      line(13, 15);
-
-      line(12, 14);
-      line(14, 16);
+      }
     };
 
     // -----------------------------
-    // MAIN LOOP (THROTTLED)
+    // LOOP
     // -----------------------------
     const loop = async (t: number) => {
       const video =
@@ -175,19 +178,18 @@ export default function Page() {
         !canvas ||
         !landmarker
       ) {
-        rafId =
+        raf =
           requestAnimationFrame(loop);
         return;
       }
 
-      // 🔥 throttle to 15 FPS
-      if (t - lastTime < 66) {
-        rafId =
+      if (t - last < 66) {
+        raf =
           requestAnimationFrame(loop);
         return;
       }
 
-      lastTime = t;
+      last = t;
 
       const ctx =
         canvas.getContext("2d");
@@ -206,7 +208,7 @@ export default function Page() {
       if (
         video.videoWidth === 0
       ) {
-        rafId =
+        raf =
           requestAnimationFrame(loop);
         return;
       }
@@ -230,7 +232,7 @@ export default function Page() {
       ctx.translate(-cw, 0);
 
       if (result.landmarks?.length) {
-        drawSkeleton(
+        draw(
           ctx,
           result.landmarks[0],
           video.videoWidth,
@@ -242,39 +244,38 @@ export default function Page() {
 
       ctx.restore();
 
-      rafId =
+      raf =
         requestAnimationFrame(loop);
     };
 
     const start = async () => {
       await initCamera();
       await initModel();
-
-      rafId =
+      raf =
         requestAnimationFrame(loop);
     };
 
     start();
 
     return () =>
-      cancelAnimationFrame(rafId);
+      cancelAnimationFrame(raf);
   }, []);
 
   return (
     <main className="fixed inset-0 bg-black overflow-hidden">
-      {/* camera stream (hidden but active) */}
+      {/* 👇 NOW YOU CAN SEE CAMERA */}
       <video
         ref={videoRef}
         playsInline
         muted
         autoPlay
-        className="hidden"
+        className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
       />
 
-      {/* output canvas */}
+      {/* overlay */}
       <canvas
         ref={canvasRef}
-        className="w-full h-full"
+        className="absolute inset-0 w-full h-full"
       />
     </main>
   );
