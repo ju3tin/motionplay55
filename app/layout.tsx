@@ -3,6 +3,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 import { Analytics } from "@vercel/analytics/next"
 import './globals.css';
 import { ClientProviders } from '@/app/ClientProviders';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: 'MotionPlay',
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <ClientProviders>{children}</ClientProviders>
+        <Analytics />
       </body>
       <Analytics />
     </html>
