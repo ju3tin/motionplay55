@@ -21,7 +21,7 @@ const PROGRAM_ID = '2HK29Di58nED836JN14U1bPsxW4q52FLW5knoJEDmYQJ';
 // key = gameId from the competition account
 // Add your real game components here as you build them.
 const GAME_REGISTRY: Record<number, React.ComponentType<GameProps>> = {
-  1: Punch Up,
+  1: PunchUp,
   // 1: GameOne,
   // 2: GameTwo,
   // etc.
