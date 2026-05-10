@@ -299,6 +299,7 @@ function PlayChallengeInner() {
           </div>
 
           {/* Dev panel */}
+          {/*
           <details style={s.dev}>
             <summary style={s.devSum}>Developer</summary>
             <p style={s.devText}>
@@ -315,7 +316,7 @@ function PlayChallengeInner() {
               Simulate score
             </button>
           </details>
-
+*/}
         </div>
       </div>
     </main>
