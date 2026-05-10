@@ -196,7 +196,16 @@ function PlayChallengeInner() {
         </div>
         <ClientWalletButton />
       </div>
+ <PunchTargets
+      onScore={(score) => {
+        console.log("Score:", score);
 
+        // optional global hook
+        if (typeof window !== "undefined") {
+          window.__motionplay_score?.(score);
+        }
+      }}
+    />
       {/* Missing params warning */}
       {(missingComp || missingGame) && (
         <div style={s.paramWarn}>
