@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react
 import { useSearchParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import PunchTargets from "@/components/PunchTargets";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // URL shape:  /play?comp=<PDA>&gameId=<number>
