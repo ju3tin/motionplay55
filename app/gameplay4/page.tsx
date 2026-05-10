@@ -227,13 +227,13 @@ function PlayChallengeInner() {
 
       <div style={s.body}>
         {/* ── Game area ───────────────────────────────────────────────────── */}
-        <div style={s.gameShell}>
+        {/*  <div style={s.gameShell}>
           {GameComponent
             ? <GameComponent onScore={reportScore} />
             : <GameSlot gameId={gameId} hasComp={!missingComp} onScore={reportScore} />
           }
         </div>
-
+*/}
         {/* ── Sidebar ─────────────────────────────────────────────────────── */}
         <div style={s.sidebar}>
 
