@@ -12,6 +12,7 @@
     "cmdk": "^1.1.1",
     "input-otp": "^1.4.2",
     "@solana/wallet-adapter-base": "^0.9.27",
+    "@solana/wallet-adapter-wallets": "^0.19.37",
     "framer-motion": "^12.34.1",
     "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-react": "^0.15.39",
