@@ -2,7 +2,7 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
-import Leaderboard from '@/components/Leaderboard';
+import Leaderboard from '@/components/Leaderboard1';
 
 export default function LeaderboardPage() {
   const params      = useSearchParams();
