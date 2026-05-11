@@ -277,7 +277,7 @@ function JoinGate({
         )}
 
         {walletConnected && (joinState === 'not-joined' || joinState === 'error') && (
-          <button style={jg.btn} onClick={onJoin} disabled={joinState === 'joining'}>
+          <button style={jg.btn} onClick={onJoin}>
             {joinState === 'error' ? 'Try again' : 'Join & Play'}
           </button>
         )}
