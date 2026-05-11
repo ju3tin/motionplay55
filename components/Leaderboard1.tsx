@@ -239,7 +239,7 @@ export default function Leaderboard({
   const now         = Date.now() / 1000;
   const isPastEnd   = meta ? now > meta.finishTime : false;
   const canFinalize = isCreator && isPastEnd && !isEnded;
-  const canClaim    = isWinner && isEnded && claimState !== 'success';
+  const canClaim = isWinner && isEnded;
   const prize       = meta ? lamportsToSol(meta.totalPrize) : '—';
 
   // ── Render ────────────────────────────────────────────────────────────────
