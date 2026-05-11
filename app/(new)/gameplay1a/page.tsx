@@ -101,9 +101,12 @@ function useJoin(compAddress: string, wallet: ReturnType<typeof useWallet>) {
       const [entryPda] = PublicKey.findProgramAddressSync(
         [Buffer.from('entry'), compPda.toBuffer(), wallet.publicKey.toBuffer()], programId
       );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('vault'), compPda.toBuffer()], programId
+      );
       await program.methods
-        .enterCompetition()
-        .accounts({ competition: compPda, playerEntry: entryPda, player: wallet.publicKey })
+        .enter()
+        .accounts({ competition: compPda, playerEntry: entryPda, player: wallet.publicKey, vault: vaultPda })
         .rpc();
       setJoinState('joined');
     } catch (e: any) {
