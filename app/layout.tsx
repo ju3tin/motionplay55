@@ -5,8 +5,66 @@ import './globals.css';
 import { ClientProviders } from '@/app/ClientProviders';
 
 export const metadata: Metadata = {
-  title: 'MotionPlay',
+  metadataBase: new URL('https://motionplay.xyz'),
+
+  title: {
+    default: 'MotionPlay',
+    template: '%s | MotionPlay',
+  },
+
   description: 'Solana competition platform',
+
+  keywords: [
+    'Solana',
+    'crypto competitions',
+    'web3 gaming',
+    'blockchain',
+    'MotionPlay',
+  ],
+
+  authors: [{ name: 'MotionPlay' }],
+  creator: 'MotionPlay',
+  publisher: 'MotionPlay',
+
+  openGraph: {
+    title: 'MotionPlay',
+    description: 'Solana competition platform',
+    url: 'https://motionplay.xyz',
+    siteName: 'MotionPlay',
+    images: [
+      {
+        url: '/og-image.png', // put in /public
+        width: 1200,
+        height: 630,
+        alt: 'MotionPlay',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MotionPlay',
+    description: 'Solana competition platform',
+    creator: '@motionplay',
+    images: ['/og-image.png'],
+  },
+
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon-16x16.png',
+    apple: '/apple-touch-icon.png',
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  alternates: {
+    canonical: 'https://motionplay.xyz',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
