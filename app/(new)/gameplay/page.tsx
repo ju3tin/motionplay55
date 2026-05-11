@@ -8,16 +8,10 @@ import PunchTargets from "@/components/PunchTargets";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // URL shape:  /play?comp=<PDA>&gameId=<number>
-//
-// Adding a new game:
-//   1. Create your component in /games/GameXxx.tsx
-//   2. Add it to GAME_REGISTRY below
-//   3. Your component receives { onScore } and calls onScore(n) to submit
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PROGRAM_ID = '2HK29Di58nED836JN14U1bPsxW4q52FLW5knoJEDmYQJ';
 
-// ── Game registry ─────────────────────────────────────────────────────────────
 const GAME_REGISTRY: Record<number, React.ComponentType<GameProps>> = {
   1: PunchTargets,
 };
@@ -26,7 +20,6 @@ export interface GameProps {
   onScore: (score: number) => void;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 declare global {
   interface Window {
     __motionplay_score: (score: number) => void;
@@ -46,11 +39,51 @@ interface ScoreEntry {
   error?:      string;
 }
 
+// ─── Mobile detection ─────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return isMobile;
+}
+
 function ClientWalletButton() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
   return <WalletMultiButton />;
+}
+
+// ─── Share button ─────────────────────────────────────────────────────────────
+function ShareButton({ gameId }: { gameId: number }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = useCallback(async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Join my MotionPlay challenge!',
+          text: `Play against me on MotionPlay — Game #${gameId}`,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch { /* user cancelled */ }
+  }, [gameId]);
+
+  return (
+    <button style={{ ...sh.btn, ...(copied ? sh.btnCopied : {}) }} onClick={handleShare}>
+      {copied ? '✓ Copied!' : '🔗 Share'}
+    </button>
+  );
 }
 
 // ─── Join hook ────────────────────────────────────────────────────────────────
@@ -115,14 +148,14 @@ function useJoin(compAddress: string, wallet: ReturnType<typeof useWallet>) {
     }
   }, [wallet, compAddress]);
 
-  return { joinState, joinError, join, recheckJoin: checkJoined };
+  return { joinState, joinError, join };
 }
 
 // ─── Scoring hook ─────────────────────────────────────────────────────────────
 function useScoring(compAddress: string, wallet: ReturnType<typeof useWallet>) {
-  const [history, setHistory]     = useState<ScoreEntry[]>([]);
-  const [bestScore, setBestScore] = useState<number | null>(null);
-  const [chainBest, setChainBest] = useState<number | null>(null);
+  const [history, setHistory]       = useState<ScoreEntry[]>([]);
+  const [bestScore, setBestScore]   = useState<number | null>(null);
+  const [chainBest, setChainBest]   = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const queueRef      = useRef<number[]>([]);
   const processingRef = useRef(false);
@@ -205,38 +238,27 @@ function useScoring(compAddress: string, wallet: ReturnType<typeof useWallet>) {
 
 // ─── Join Gate UI ─────────────────────────────────────────────────────────────
 function JoinGate({
-  joinState,
-  joinError,
-  onJoin,
-  compAddress,
-  walletConnected,
+  joinState, joinError, onJoin, compAddress, walletConnected,
 }: {
-  joinState:      JoinState;
-  joinError:      string;
-  onJoin:         () => void;
-  compAddress:    string;
-  walletConnected: boolean;
+  joinState: JoinState; joinError: string; onJoin: () => void;
+  compAddress: string; walletConnected: boolean;
 }) {
   return (
     <div style={jg.overlay}>
       <div style={jg.card}>
-        {/* Icon */}
         <div style={jg.iconWrap}>
-          {joinState === 'loading'  && <span style={jg.spinnerLg} />}
+          {(joinState === 'loading' || joinState === 'joining') && <span style={jg.spinnerLg} />}
           {joinState === 'not-joined' && <span style={{ fontSize: 36 }}>🏆</span>}
-          {joinState === 'joining'  && <span style={jg.spinnerLg} />}
-          {joinState === 'error'    && <span style={{ fontSize: 36 }}>⚠️</span>}
+          {joinState === 'error'      && <span style={{ fontSize: 36 }}>⚠️</span>}
         </div>
 
-        {/* Heading */}
         <h2 style={jg.heading}>
-          {joinState === 'loading'   && 'Checking entry…'}
-          {joinState === 'not-joined'&& 'Join this competition'}
-          {joinState === 'joining'   && 'Joining…'}
-          {joinState === 'error'     && 'Failed to join'}
+          {joinState === 'loading'    && 'Checking entry…'}
+          {joinState === 'not-joined' && 'Join this competition'}
+          {joinState === 'joining'    && 'Joining…'}
+          {joinState === 'error'      && 'Failed to join'}
         </h2>
 
-        {/* Body */}
         {joinState === 'not-joined' && (
           <>
             <p style={jg.body}>
@@ -251,34 +273,21 @@ function JoinGate({
             )}
           </>
         )}
-
-        {joinState === 'loading' && (
-          <p style={jg.body}>Checking your entry on devnet…</p>
-        )}
-
-        {joinState === 'joining' && (
-          <p style={jg.body}>Confirm the transaction in your wallet.</p>
-        )}
-
-        {joinState === 'error' && (
+        {joinState === 'loading' && <p style={jg.body}>Checking your entry on devnet…</p>}
+        {joinState === 'joining' && <p style={jg.body}>Confirm the transaction in your wallet.</p>}
+        {joinState === 'error'   && (
           <>
             <p style={jg.body}>Something went wrong while joining.</p>
-            {joinError && (
-              <p style={jg.errBox}>{joinError}</p>
-            )}
+            {joinError && <p style={jg.errBox}>{joinError}</p>}
           </>
         )}
 
-        {/* Actions */}
         {!walletConnected && joinState === 'not-joined' && (
           <div style={{ marginTop: 18 }}>
-            <p style={{ ...jg.body, marginBottom: 10, color: '#f59e0b' }}>
-              Connect your wallet first.
-            </p>
+            <p style={{ ...jg.body, marginBottom: 10, color: '#f59e0b' }}>Connect your wallet first.</p>
             <ClientWalletButton />
           </div>
         )}
-
         {walletConnected && (joinState === 'not-joined' || joinState === 'error') && (
           <button style={jg.btn} onClick={onJoin}>
             {joinState === 'error' ? 'Try again' : 'Join & Play'}
@@ -289,10 +298,19 @@ function JoinGate({
   );
 }
 
-// ─── Inner page (uses useSearchParams) ───────────────────────────────────────
+// ─── State icon ───────────────────────────────────────────────────────────────
+function StateIcon({ state }: { state: SubmitState }) {
+  if (state === 'submitting') return <span style={s.spinner} />;
+  if (state === 'success')    return <span style={{ color: '#16a34a', fontSize: 14 }}>✓</span>;
+  if (state === 'error')      return <span style={{ color: '#dc2626', fontSize: 14 }}>✗</span>;
+  return null;
+}
+
+// ─── Inner page ───────────────────────────────────────────────────────────────
 function PlayChallengeInner() {
   const params      = useSearchParams();
   const wallet      = useWallet();
+  const isMobile    = useIsMobile();
   const compAddress = params.get('comp')   ?? '';
   const gameId      = parseInt(params.get('gameId') ?? '0', 10);
   const [gameError, setGameError] = useState('');
@@ -301,7 +319,6 @@ function PlayChallengeInner() {
   const { reportScore, history, bestScore, chainBest, submitting } =
     useScoring(compAddress, wallet);
 
-  // Expose window API for games that prefer it
   useEffect(() => {
     window.__motionplay_score = (score: number) => {
       if (typeof score !== 'number' || isNaN(score)) return;
@@ -316,19 +333,60 @@ function PlayChallengeInner() {
     };
   }, [reportScore]);
 
-  const lastSuccess  = history.find(e => e.state === 'success');
-  const isNewBest    = lastSuccess?.score === bestScore &&
-                       (chainBest === null || (bestScore !== null && bestScore > chainBest));
+  const lastSuccess = history.find(e => e.state === 'success');
+  const isNewBest   = lastSuccess?.score === bestScore &&
+                      (chainBest === null || (bestScore !== null && bestScore > chainBest));
 
-  const GameComponent = GAME_REGISTRY[gameId] ?? null;
-  const missingComp   = !compAddress;
-  const missingGame   = !GameComponent;
+  const missingComp = !compAddress;
+  const missingGame = !GAME_REGISTRY[gameId];
+  const showJoinGate = compAddress && wallet.publicKey ? joinState !== 'joined' : false;
 
-  // Show join gate whenever the player hasn't joined yet
-  const showJoinGate = compAddress && wallet.publicKey
-    ? joinState !== 'joined'
-    : false;
+  const handleScore = useCallback((score: number) => {
+    console.log('Score:', score);
+    if (typeof window !== 'undefined') window.__motionplay_score?.(score);
+  }, []);
 
+  // ── Mobile layout ──────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={m.root}>
+        {/* Slim top bar */}
+        <div style={m.bar}>
+          <a href="/competitions" style={m.back}>← Back</a>
+          <ShareButton gameId={gameId} />
+          <ClientWalletButton />
+        </div>
+
+        {/* Full-screen game */}
+        <div style={m.gameWrap}>
+          {joinState === 'joined' && (
+            <PunchTargets onScore={handleScore} />
+          )}
+        </div>
+
+        {/* Join gate overlay works on mobile too */}
+        {showJoinGate && (
+          <JoinGate
+            joinState={joinState}
+            joinError={joinError}
+            onJoin={join}
+            compAddress={compAddress}
+            walletConnected={!!wallet.publicKey}
+          />
+        )}
+
+        {/* Wallet prompt banner at bottom */}
+        {!wallet.publicKey && compAddress && (
+          <div style={m.walletPrompt}>
+            <span>👛 Connect wallet to play</span>
+            <ClientWalletButton />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop layout ─────────────────────────────────────────────────────────
   return (
     <main style={s.main}>
       {/* Header */}
@@ -346,7 +404,10 @@ function PlayChallengeInner() {
             )}
           </div>
         </div>
-        <ClientWalletButton />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {compAddress && <ShareButton gameId={gameId} />}
+          <ClientWalletButton />
+        </div>
       </div>
 
       {/* Missing params warning */}
@@ -367,7 +428,7 @@ function PlayChallengeInner() {
         </div>
       )}
 
-      {/* ── Join gate overlay ──────────────────────────────────────────────── */}
+      {/* Join gate */}
       {showJoinGate && (
         <JoinGate
           joinState={joinState}
@@ -378,7 +439,7 @@ function PlayChallengeInner() {
         />
       )}
 
-      {/* ── Prompt to connect wallet if we have a comp but no wallet ───────── */}
+      {/* Wallet prompt */}
       {!wallet.publicKey && compAddress && (
         <div style={s.connectPrompt}>
           <span style={{ fontSize: 20 }}>👛</span>
@@ -391,29 +452,17 @@ function PlayChallengeInner() {
       )}
 
       <div style={s.body}>
-        {/* ── Game area ───────────────────────────────────────────────────── */}
-        {/* Only render the game once joined */}
+        {/* Game */}
         {joinState === 'joined' && (
-          <PunchTargets
-            onScore={(score) => {
-              console.log("Score:", score);
-              if (typeof window !== "undefined") {
-                window.__motionplay_score?.(score);
-              }
-            }}
-          />
+          <PunchTargets onScore={handleScore} />
         )}
 
-        {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+        {/* Sidebar */}
         <div style={s.sidebar}>
-
-          {/* Score display */}
           <div style={s.scoreCard}>
             <p style={s.scoreLabel}>SESSION BEST</p>
             <p style={s.scoreValue}>{bestScore ?? '—'}</p>
-            {chainBest !== null && (
-              <p style={s.scoreSub}>Chain record: {chainBest}</p>
-            )}
+            {chainBest !== null && <p style={s.scoreSub}>Chain record: {chainBest}</p>}
             {submitting && (
               <div style={s.submittingRow}>
                 <span style={s.spinner} />
@@ -425,7 +474,6 @@ function PlayChallengeInner() {
             )}
           </div>
 
-          {/* Warnings */}
           {!wallet.publicKey && (
             <div style={s.warn}>Connect your wallet to submit scores on-chain.</div>
           )}
@@ -435,7 +483,6 @@ function PlayChallengeInner() {
             </div>
           )}
 
-          {/* History */}
           <div style={s.histCard}>
             <p style={s.histTitle}>Score History</p>
             {history.length === 0
@@ -473,15 +520,7 @@ function PlayChallengeInner() {
   );
 }
 
-// ─── State icon ───────────────────────────────────────────────────────────────
-function StateIcon({ state }: { state: SubmitState }) {
-  if (state === 'submitting') return <span style={s.spinner} />;
-  if (state === 'success')    return <span style={{ color: '#16a34a', fontSize: 14 }}>✓</span>;
-  if (state === 'error')      return <span style={{ color: '#dc2626', fontSize: 14 }}>✗</span>;
-  return null;
-}
-
-// ─── Root export (Suspense required for useSearchParams) ──────────────────────
+// ─── Root export ──────────────────────────────────────────────────────────────
 export default function PlayChallengePage() {
   return (
     <Suspense fallback={
@@ -494,7 +533,7 @@ export default function PlayChallengePage() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Desktop styles ───────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
   main:         { maxWidth: 1200, margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, sans-serif', minHeight: '100vh' },
   header:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
@@ -513,7 +552,6 @@ const s: Record<string, React.CSSProperties> = {
   connectSub:   { margin: 0, fontSize: 13, color: '#4b7a5a' },
 
   body:         { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, alignItems: 'start' },
-  gameShell:    { border: '1px solid #e5e7eb', borderRadius: 16, overflow: 'hidden', minHeight: 500, background: '#000', display: 'flex', flexDirection: 'column' as const },
 
   sidebar:      { display: 'flex', flexDirection: 'column' as const, gap: 14 },
 
@@ -538,6 +576,21 @@ const s: Record<string, React.CSSProperties> = {
   errText:      { fontSize: 11, color: '#dc2626', margin: 0 },
 
   spinner:      { display: 'inline-block', width: 11, height: 11, border: '2px solid #e5e7eb', borderTopColor: '#9945FF', borderRadius: '50%', animation: 'spin 0.7s linear infinite' },
+};
+
+// ─── Mobile styles ────────────────────────────────────────────────────────────
+const m: Record<string, React.CSSProperties> = {
+  root:         { display: 'flex', flexDirection: 'column' as const, height: '100dvh', overflow: 'hidden', fontFamily: 'Arial, sans-serif', background: '#000' },
+  bar:          { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', flexShrink: 0, gap: 8 },
+  back:         { fontSize: 13, color: '#9ca3af', textDecoration: 'none', padding: '5px 10px', border: '1px solid #374151', borderRadius: 8, whiteSpace: 'nowrap' as const },
+  gameWrap:     { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' as const },
+  walletPrompt: { position: 'fixed' as const, bottom: 0, left: 0, right: 0, background: '#1f2937', borderTop: '1px solid #374151', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, color: '#9ca3af', zIndex: 40 },
+};
+
+// ─── Share button styles ──────────────────────────────────────────────────────
+const sh: Record<string, React.CSSProperties> = {
+  btn:       { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' as const },
+  btnCopied: { background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' },
 };
 
 // ─── Join gate styles ─────────────────────────────────────────────────────────
