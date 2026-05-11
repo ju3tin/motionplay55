@@ -39,7 +39,7 @@ export const metadata: Metadata = {
         alt: 'MotionPlay',
       },
     ],
-    locale: 'en_US',
+    locale: 'en_UK',
     type: 'website',
   },
 
