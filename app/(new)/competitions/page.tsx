@@ -329,6 +329,14 @@ export default function CompetitionsPage() {
                   </div>
                 </div>
 
+<div style={{ marginBottom: 16 }}>
+  
+<link href=`https://motionplay.vercel.app/leaderboard1?comp=${comp.pubkey}`>
+Leaderboard
+</link>
+
+</div>
+                
                 {/* Participants bar */}
                 <div style={{ marginBottom: 16 }}>
                   <div style={s.barLabels}>
