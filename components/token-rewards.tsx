@@ -87,4 +87,4 @@ export function TokenRewards({
       </CardContent>
     </Card>
   )
-}
+} 
