@@ -5,7 +5,7 @@ import './globals.css';
 import { ClientProviders } from '@/app/ClientProviders';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://motionplay.xyz'),
+  metadataBase: new URL('https://motionplay.vercel.app'),
 
   title: {
     default: 'MotionPlay',
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'MotionPlay',
     description: 'Solana competition platform',
-    url: 'https://motionplay.xyz',
+    url: 'https://motionplay.vercel.app',
     siteName: 'MotionPlay',
     images: [
       {
@@ -63,7 +63,7 @@ export const metadata: Metadata = {
   },
 
   alternates: {
-    canonical: 'https://motionplay.xyz',
+    canonical: 'https://motionplay.vercel.app',
   },
 };
 
