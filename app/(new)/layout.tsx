@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     title: 'MotionPlay',
     description: 'Solana competition platform',
     creator: '@motionplay',
-    images: ['/og-image.png'],
+    images: ['/twitter-image.png'],
   },
 
   icons: {
