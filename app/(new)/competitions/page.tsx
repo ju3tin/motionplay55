@@ -332,9 +332,9 @@ export default function CompetitionsPage() {
 
 <div style={{ marginBottom: 16 }}>
   
-<link href={`https://motionplay.vercel.app/leaderboard1?comp=${comp.pubkey}`}>
+<Link href={`https://motionplay.vercel.app/leaderboard1?comp=${comp.pubkey}`}>
 Leaderboard
-</link>
+</Link>
 
 </div>
                 
