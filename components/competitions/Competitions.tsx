@@ -247,6 +247,15 @@ export default function CompetitionsPage() {
               ↻
             </span>
           </button>
+
+<button onClick={() => {
+  window.location.href = '/create'
+}} disabled={loading} style={s.refreshBtn} title="Refresh">
+            <span style={{ display: 'inline-block', animation: loading ? 'spin 0.7s linear infinite' : 'none' }}>
+              +
+            </span>
+          </button>
+          
         </div>
       </div>
 
