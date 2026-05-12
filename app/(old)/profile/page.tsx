@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { getProfile, signOut } from './actions'
+import { getProfile, signOut } from '@/app/(old)/profile/actions'
 import { ProfileForm } from '@/components/profile-form'
 import { Navbar } from '@/components/navbar'
 import { Footer } from '@/components/footer'
