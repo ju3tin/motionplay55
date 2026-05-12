@@ -249,8 +249,8 @@ export default function CompetitionsPage() {
           </button>
 
 <button onClick={() => {
-              console.log('fuck you');
-            }} disabled={loading} style={s.refreshBtn} title="Refresh">
+  window.location.href = '/create'
+}} disabled={loading} style={s.refreshBtn} title="Refresh">
             <span style={{ display: 'inline-block', animation: loading ? 'spin 0.7s linear infinite' : 'none' }}>
               +
             </span>
