@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { GameCard } from "@/components/game-card"
-import Competitions from "@/components/competitions/Competitions"
+import Competitions from "@/components/competitions/dude5"
 
 import * as Icons from "lucide-react"
 import type { LucideIcon } from "lucide-react"
