@@ -3,20 +3,9 @@ import { Footer } from "@/components/footer"
 import { GamesView } from "@/components/games-view"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import * as Icons from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 
 export default async function GamesPage() {
   const supabase = await createClient()
-
-  const iconMap: Record<string, LucideIcon> = {
-    Hand: Icons.Hand,
-    Target: Icons.Target,
-    Swords: Icons.Swords,
-    Music: Icons.Music,
-    Dumbbell: Icons.Dumbbell,
-    Bird: Icons.Bird,
-  }
 
   const {
     data: { user },
@@ -26,16 +15,29 @@ export default async function GamesPage() {
     redirect("/auth/login")
   }
 
-  const { data: games } = await supabase
+  const { data: games, error } = await supabase
     .from("gameslist")
-    .select("*")
+    .select(`
+      id,
+      game_id,
+      title,
+      description,
+      icon,
+      difficulty,
+      duration,
+      calories,
+      players,
+      color,
+      link,
+      isLocked,
+      comingSoon,
+      slug
+    `)
     .order("created_at", { ascending: true })
 
-  const mappedGames =
-    games?.map((game) => ({
-      ...game,
-      iconComponent: iconMap[game.icon],
-    })) || []
+  if (error) {
+    console.error("Error fetching games:", error)
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -43,9 +45,7 @@ export default async function GamesPage() {
 
       <main className="pt-24 pb-16">
         <div className="container mx-auto px-4">
-
-          <GamesView games={mappedGames} />
-
+          <GamesView games={games || []} />
         </div>
       </main>
 
