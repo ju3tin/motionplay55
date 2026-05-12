@@ -10,7 +10,7 @@ export default async function GamesPage() {
   const supabase = await createClient()
 
   const iconMap: Record<string, LucideIcon> = {
-    Hand: Icons.Hand,
+    Hand: Icons.Hand, 
     Target: Icons.Target,
     Swords: Icons.Swords,
     Music: Icons.Music,
