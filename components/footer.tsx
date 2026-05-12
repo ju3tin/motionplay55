@@ -23,7 +23,7 @@ export function Footer() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Built with TensorFlow.js
+            Built by Justin
           </p>
         </div>
       </div>
