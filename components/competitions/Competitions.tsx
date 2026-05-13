@@ -197,15 +197,9 @@ export default function CompetitionsPage() {
   };
 
   return (
-    <main style={s.main}>
+    <main>
       {/* Header */}
-      <div style={s.header}>
-        <div>
-          <h1 style={s.title}>MotionPlay</h1>
-          <p style={s.subtitle}>Live Competitions</p>
-        </div>
-        <ClientWalletButton />
-      </div>
+  
 
       {/* Controls */}
       <div style={s.controls}>
