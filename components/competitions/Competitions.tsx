@@ -19,6 +19,10 @@ interface Competition {
   status: 'active' | 'ended' | 'cancelled';
   winner: string;
   gameId: number;
+  
+  // NEW
+  topScorer?: string;
+  topScore?: number;
 }
 
 function ClientWalletButton() {
@@ -63,27 +67,58 @@ export default function CompetitionsPage() {
       const program = new Program(IDL as any, provider) as any;
       const all     = await program.account.competition.all();
 
-      const mapped: Competition[] = all.map(({ publicKey, account: a }: any) => ({
-        pubkey:              publicKey.toBase58(),
-        description:         a.description,
-        creator:             a.creator.toBase58(),
-        entryFee:            a.entryFee.toNumber() / 1e9,
-        maxParticipants:     a.maxParticipants,
-        currentParticipants: a.currentParticipants,
-        totalPrize:          a.totalPrize.toNumber() / 1e9,
-        finishTime:          a.finishTime.toNumber(),
-        status:              a.status.ended ? 'ended' : a.status.cancelled ? 'cancelled' : 'active',
-        winner:              a.winner?.toBase58?.() ?? '',
-        gameId:              a.gameId?.toNumber?.() ?? 0,
-      }));
+      const mapped: Competition[] = await Promise.all(
+  all.map(async ({ publicKey, account: a }: any) => {
 
-      setCompetitions(mapped);
-    } catch (e: any) {
-      setError('Failed to load competitions: ' + e.message);
-    } finally {
-      setLoading(false);
+    let topScorer = '';
+    let topScore = 0;
+
+    try {
+      // fetch all player entries
+      const entries = await program.account.playerEntry.all([
+        {
+          memcmp: {
+            offset: 8, // discriminator
+            bytes: publicKey.toBase58(),
+          },
+        },
+      ]);
+
+      for (const e of entries) {
+        const score = e.account.score?.toNumber?.() ?? 0;
+
+        if (score > topScore) {
+          topScore = score;
+          topScorer = e.account.player.toBase58();
+        }
+      }
+    } catch (err) {
+      console.log('leaderboard fetch failed', err);
     }
-  }, [wallet]);
+
+    return {
+      pubkey: publicKey.toBase58(),
+      description: a.description,
+      creator: a.creator.toBase58(),
+      entryFee: a.entryFee.toNumber() / 1e9,
+      maxParticipants: a.maxParticipants,
+      currentParticipants: a.currentParticipants,
+      totalPrize: a.totalPrize.toNumber() / 1e9,
+      finishTime: a.finishTime.toNumber(),
+      status: a.status.ended
+        ? 'ended'
+        : a.status.cancelled
+        ? 'cancelled'
+        : 'active',
+      winner: a.winner?.toBase58?.() ?? '',
+      gameId: a.gameId?.toNumber?.() ?? 0,
+
+      // NEW
+      topScorer,
+      topScore,
+    };
+  })
+), [wallet]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
