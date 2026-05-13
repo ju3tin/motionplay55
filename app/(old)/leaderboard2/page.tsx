@@ -1,5 +1,5 @@
 import CompetitionsHub from '@/components/CompetitionsHub';
-import Leaderboard from '@/components/Leaderboard';
+import Leaderboard from '@/components/Leaderboard1';
 
 export default function Page() {
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
@@ -8,7 +8,11 @@ export default function Page() {
     return (
       <div>
         <button onClick={() => setSelectedComp(null)}>← Back to all competitions</button>
-        <Leaderboard compAddress={selectedComp} />
+         <Leaderboard
+        compAddress={selectedComp}
+        playerPubkey={wallet.publicKey?.toBase58()}
+        pollIntervalMs={20_000}
+      />
       </div>
     );
   }
