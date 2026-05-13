@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <title>Pushup Counter</title>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+        }
+
+        video,
+        canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        video {
+            display: none;
+        }
+
+        .counter {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: #ff3b30;
+            font-size: 28px;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 16px;
+            border-radius: 12px;
+        }
+
+        .loading {
+            position: absolute;
+            inset: 0;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: black;
+            color: white;
+            font-size: 22px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <video class="input_video" autoplay playsinline muted></video>
+
+        <canvas class="output_canvas"></canvas>
+
+        <div class="counter" id="counter">
+            Pushups: 0
+        </div>
+
+        <div class="loading" id="loading">
+            Loading Camera...
+        </div>
+
+    </div>
+
+    <script>
+
+        const videoElement = document.querySelector(".input_video");
+        const canvasElement = document.querySelector(".output_canvas");
+        const canvasCtx = canvasElement.getContext("2d");
+
+        const counterElement = document.getElementById("counter");
+        const loadingElement = document.getElementById("loading");
+
+        let counter = 0;
+        let stage = "UP";
+
+        // Resize canvas for all devices
+        function resizeCanvas() {
+
+            const dpr = window.devicePixelRatio || 1;
+
+            canvasElement.width = window.innerWidth * dpr;
+            canvasElement.height = window.innerHeight * dpr;
+
+            canvasElement.style.width = window.innerWidth + "px";
+            canvasElement.style.height = window.innerHeight + "px";
+
+            canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        resizeCanvas();
+
+        window.addEventListener("resize", resizeCanvas);
+
+        function drawVideoContain(image) {
+
+            const videoWidth = image.videoWidth;
+            const videoHeight = image.videoHeight;
+
+            const canvasWidth = window.innerWidth;
+            const canvasHeight = window.innerHeight;
+
+            const videoRatio = videoWidth / videoHeight;
+            const canvasRatio = canvasWidth / canvasHeight;
+
+            let drawWidth;
+            let drawHeight;
+            let offsetX;
+            let offsetY;
+
+            // Fit entire camera inside canvas WITHOUT cropping
+            if (videoRatio > canvasRatio) {
+
+                drawWidth = canvasWidth;
+                drawHeight = canvasWidth / videoRatio;
+
+                offsetX = 0;
+                offsetY = (canvasHeight - drawHeight) / 2;
+
+            } else {
+
+                drawHeight = canvasHeight;
+                drawWidth = canvasHeight * videoRatio;
+
+                offsetX = (canvasWidth - drawWidth) / 2;
+                offsetY = 0;
+            }
+
+            canvasCtx.drawImage(
+                image,
+                offsetX,
+                offsetY,
+                drawWidth,
+                drawHeight
+            );
+
+            return {
+                offsetX,
+                offsetY,
+                drawWidth,
+                drawHeight
+            };
+        }
+
+        function onResults(results) {
+
+            loadingElement.style.display = "none";
+
+            if (!results.poseLandmarks) {
+                return;
+            }
+
+            canvasCtx.save();
+
+            canvasCtx.clearRect(
+                0,
+                0,
+                window.innerWidth,
+                window.innerHeight
+            );
+
+            // Draw camera correctly
+            const videoDraw = drawVideoContain(results.image);
+
+            // Draw pose skeleton
+            drawConnectors(
+                canvasCtx,
+                results.poseLandmarks,
+                POSE_CONNECTIONS,
+                {
+                    color: "#00FF00",
+                    lineWidth: 3
+                }
+            );
+
+            // Draw pose points
+            drawLandmarks(
+                canvasCtx,
+                results.poseLandmarks,
+                {
+                    color: "#FFFFFF",
+                    fillColor: "#FF0000",
+                    radius: 4,
+                    lineWidth: 2
+                }
+            );
+
+            // Nose landmark
+            const nose = results.poseLandmarks[0];
+
+            if (nose) {
+
+                const noseY = nose.y;
+
+                // UP
+                if (noseY < 0.5) {
+                    stage = "UP";
+                }
+
+                // DOWN
+                if (noseY > 0.7 && stage === "UP") {
+                    stage = "DOWN";
+                    counter++;
+                }
+
+                counterElement.innerText = `Pushups: ${counter}`;
+            }
+
+            canvasCtx.restore();
+        }
+
+        // Setup MediaPipe Pose
+        const pose = new Pose({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
+            }
+        });
+
+        pose.setOptions({
+            modelComplexity: 0,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            smoothSegmentation: false,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults(onResults);
+
+        // Setup camera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+
+                await pose.send({
+                    image: videoElement
+                });
+
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start();
+
+    </script>
+
+</body>
+
+</html>
