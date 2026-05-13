@@ -1,5 +1,7 @@
+"use client"
 import CompetitionsHub from '@/components/CompetitionsHub';
 import Leaderboard from '@/components/Leaderboard1';
+import { useEffect, useState } from "react"
 
 export default function Page() {
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
