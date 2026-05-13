@@ -339,7 +339,7 @@ export default function CompetitionsPage() {
                   </div>
                 </div>
 
-<div style={{ marginBottom: 16, text-align: 'center'; }}>
+<div style={{ marginBottom: 16, textAlign: 'center'  }}>
   
 <Link style={{ color: 'black' }} href={`https://motionplay.vercel.app/leaderboard1?comp=${comp.pubkey}`}>
 Leaderboard
