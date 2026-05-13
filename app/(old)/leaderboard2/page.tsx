@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 
 export default function Page() {
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
+  const wallet      = useWallet();
 
   if (selectedComp) {
     return (
