@@ -14,27 +14,67 @@ const _inter = Inter({ subsets: ['latin'] })
 const _spaceGrotesk = Space_Grotesk({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'MotionPlay - Body Movement Games',
-  description: 'Play exciting mini games using your body movements with TensorFlow pose detection',
-  generator: 'v0.app',
-  icons: {
-    icon: [
+  metadataBase: new URL('https://motionplay.vercel.app'),
+
+  title: {
+    default: 'MotionPlay',
+    template: '%s | MotionPlay',
+  },
+
+  description: 'Solana competition platform',
+
+  keywords: [
+    'Solana',
+    'crypto competitions',
+    'web3 gaming',
+    'blockchain',
+    'MotionPlay',
+  ],
+
+  authors: [{ name: 'MotionPlay' }],
+  creator: 'MotionPlay',
+  publisher: 'MotionPlay',
+
+  openGraph: {
+    title: 'MotionPlay',
+    description: 'Solana competition platform',
+    url: 'https://motionplay.vercel.app',
+    siteName: 'MotionPlay',
+    images: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/og-image.png', // put in /public
+        width: 1200,
+        height: 630,
+        alt: 'MotionPlay',
       },
     ],
-    apple: '/apple-icon.png',
+    locale: 'en_UK',
+    type: 'website',
   },
-}
+
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MotionPlay',
+    description: 'Solana competition platform',
+    creator: '@motionplay',
+    images: ['/twitter-image.png'],
+  },
+
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon-16x16.png',
+    apple: '/apple-touch-icon.png',
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  alternates: {
+    canonical: 'https://motionplay.vercel.app',
+  },
+};
 
 export default async function RootLayout({
   children,
