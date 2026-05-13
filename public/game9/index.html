@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Pushup Counter</title>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        video,
+        canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            top: 0;
+            left: 0;
+        }
+
+        video {
+            display: none;
+        }
+
+        .counter {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            color: red;
+            font-size: 30px;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 10px;
+        }
+
+        .loading {
+            position: absolute;
+            inset: 0;
+            background: black;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            font-size: 24px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <video class="input_video" autoplay playsinline muted></video>
+
+        <canvas class="output_canvas"></canvas>
+
+        <div class="counter" id="counter">
+            Pushups: 0
+        </div>
+
+        <div class="loading" id="loading">
+            Loading Camera...
+        </div>
+
+    </div>
+
+    <script>
+
+        const videoElement = document.querySelector(".input_video");
+        const canvasElement = document.querySelector(".output_canvas");
+        const canvasCtx = canvasElement.getContext("2d");
+
+        const counterElement = document.getElementById("counter");
+        const loadingElement = document.getElementById("loading");
+
+        let counter = 0;
+        let stage = "UP";
+
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+
+        window.addEventListener("resize", resizeCanvas);
+
+        function onResults(results) {
+
+            loadingElement.style.display = "none";
+
+            if (!results.poseLandmarks) {
+                return;
+            }
+
+            canvasCtx.save();
+
+            canvasCtx.clearRect(
+                0,
+                0,
+                canvasElement.width,
+                canvasElement.height
+            );
+
+            canvasCtx.drawImage(
+                results.image,
+                0,
+                0,
+                canvasElement.width,
+                canvasElement.height
+            );
+
+            drawConnectors(
+                canvasCtx,
+                results.poseLandmarks,
+                POSE_CONNECTIONS,
+                {
+                    color: "#00FF00",
+                    lineWidth: 3
+                }
+            );
+
+            drawLandmarks(
+                canvasCtx,
+                results.poseLandmarks,
+                {
+                    color: "#FFFFFF",
+                    fillColor: "#FF0000",
+                    lineWidth: 1,
+                    radius: 4
+                }
+            );
+
+            // Nose landmark
+            const nose = results.poseLandmarks[0];
+
+            if (nose) {
+
+                const noseY = nose.y;
+
+                // UP position
+                if (noseY < 0.5) {
+                    stage = "UP";
+                }
+
+                // DOWN position
+                if (noseY > 0.7 && stage === "UP") {
+                    stage = "DOWN";
+                    counter++;
+                }
+
+                counterElement.innerText = `Pushups: ${counter}`;
+            }
+
+            canvasCtx.restore();
+        }
+
+        // MediaPipe Pose
+        const pose = new Pose({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
+            }
+        });
+
+        pose.setOptions({
+            modelComplexity: 0,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            smoothSegmentation: false,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults(onResults);
+
+        // Camera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({
+                    image: videoElement
+                });
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start();
+
+    </script>
+
+</body>
+
+</html>
