@@ -27,8 +27,7 @@ export default function Page() {
   });
 
   const searchParams = useSearchParams();
-  const exercise =
-    searchParams.get("exercise") ?? "squat";
+  const exercise = searchParams?.get("exercise") ?? "squat";
 
   useEffect(() => {
     let rafId: number;
