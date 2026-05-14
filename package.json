@@ -44,7 +44,8 @@
     "next-video": "^2.6.0",
     "react-hook-form": "^7.71.1",
     "react-dom": "^19.1.0",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
