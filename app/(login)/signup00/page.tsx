@@ -1,22 +1,17 @@
 // app/(login)/signup00/page.tsx
-import dynamicImport from 'next/dynamic';   // ← Renamed to avoid conflict
+import dynamic from 'next/dynamic';
 
-const SolanaSignupClient = dynamicImport(
+const SignupClient = dynamic(
   () => import('./SolanaSignupClient'),
   { 
     ssr: false,
-    loading: () => (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
-        Loading wallet...
-      </div>
-    )
+    loading: () => <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Loading...</div>
   }
 );
 
-export default function SolanaSignupPage() {
-  return <SolanaSignupClient />;
+export default function SignupPage() {
+  return <SignupClient />;
 }
 
-// Force dynamic rendering - Important for wallet pages
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
