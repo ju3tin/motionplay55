@@ -1,8 +1,8 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';   // ← renamed import
 
-const WalletAuthContent = dynamic(
+const WalletAuthContent = dynamicImport(
   () => import('./WalletAuthContent'),
   { ssr: false }
 );
@@ -11,4 +11,5 @@ export default function SolanaSignup() {
   return <WalletAuthContent />;
 }
 
+// Important: Force dynamic rendering
 export const dynamic = 'force-dynamic';
