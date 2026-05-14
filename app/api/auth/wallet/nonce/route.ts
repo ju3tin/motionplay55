@@ -1,6 +1,7 @@
 // app/api/auth/wallet/nonce/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { buildSignMessage } from "@/lib/auth/walletUtils";
 import { randomBytes } from "crypto";
 
 export async function POST(req: NextRequest) {
@@ -35,8 +36,4 @@ export async function POST(req: NextRequest) {
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
-
-export function buildSignMessage(wallet: string, nonce: string): string {
-  return `Sign this message to authenticate with your Solana wallet.\n\nWallet: ${wallet}\nNonce: ${nonce}\n\nThis request will not trigger a blockchain transaction or cost any fees.`;
 }
