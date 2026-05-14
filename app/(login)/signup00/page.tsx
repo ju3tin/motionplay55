@@ -1,9 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { supabase } from '@/lib/supabase1';
+
+// Dynamically import WalletMultiButton to disable SSR
+const WalletMultiButton = dynamic(
+  () => import('@solana/wallet-adapter-react-ui').then((mod) => mod.WalletMultiButton),
+  { ssr: false }
+);
 
 export default function SolanaSignup() {
   const { publicKey, signMessage, connected } = useWallet();
@@ -13,7 +19,7 @@ export default function SolanaSignup() {
   const [success, setSuccess] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Listen to auth changes
+  // Auth state listener
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -41,12 +47,10 @@ export default function SolanaSignup() {
       const encodedMessage = new TextEncoder().encode(message);
       const signature = await signMessage(encodedMessage);
 
-      // Correct call for manual signature (wallet-adapter)
       const { data, error: authError } = await supabase.auth.signInWithWeb3({
         chain: 'solana',
         statement: message,
-        signature,           // Uint8Array - this is correct
-        // Do NOT pass publicKey here
+        signature,
       });
 
       if (authError) throw authError;
