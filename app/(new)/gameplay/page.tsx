@@ -311,7 +311,7 @@ function PlayChallengeInner() {
   const params      = useSearchParams();
   const wallet      = useWallet();
   const isMobile    = useIsMobile();
-  const compAddress = params.get('comp')   ?? '';
+  const compAddress = params?.get('comp') ?? '';
   const gameId      = parseInt(params.get('gameId') ?? '0', 10);
   const [gameError, setGameError] = useState('');
 
