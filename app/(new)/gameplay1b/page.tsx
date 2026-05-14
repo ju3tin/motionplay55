@@ -147,8 +147,8 @@ function useScoring(compAddress: string, wallet: ReturnType<typeof useWallet>) {
 function PlayChallengeInner() {
   const params      = useSearchParams();
   const wallet      = useWallet();
-  const compAddress = params.get('comp')   ?? '';
-  const gameId      = parseInt(params.get('gameId') ?? '0', 10);
+  const compAddress = params?.get('comp')   ?? '';
+  const gameId      = parseInt(params?.get('gameId') ?? '0', 10);
   const [gameError, setGameError] = useState('');
 
   const { reportScore, history, bestScore, chainBest, submitting } =
