@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from '@/lib/supabase/client'
 
 export default function SignUpWithSolana() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const supabase = createClient()
 
   async function handleSolanaSignup() {
     setLoading(true);
