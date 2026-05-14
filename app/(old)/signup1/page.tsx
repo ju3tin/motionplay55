@@ -1,57 +1,85 @@
 'use client'
 
-import React, { useState, useMemo } from "react"
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import React, { useMemo, useState, useEffect } from "react"
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Activity, ArrowLeft, Loader2 } from 'lucide-react'
+import { Activity, ArrowLeft } from 'lucide-react'
 
-import {
-  ConnectionProvider,
-  WalletProvider,
-  useWallet
-} from "@solana/wallet-adapter-react"
+import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react"
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets"
-import bs58 from 'bs58'
-import nacl from 'tweetnacl'
+
+import { Button } from '@/components/ui/button'
 
 function WalletSignup() {
-  const wallet = useWallet()
   const router = useRouter()
   const [status, setStatus] = useState('Not connected')
+  const [loading, setLoading] = useState(false)
+  const [wallet, setWallet] = useState<any>(null)
+  const [walletAvailable, setWalletAvailable] = useState(true)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Check if Phantom is installed
+      if (window.solana && window.solana.isPhantom) {
+        setWallet(window.solana)
+      } else {
+        setWalletAvailable(false)
+      }
+    }
+  }, [])
 
   const handleWalletSignup = async () => {
-    if (!wallet.connected) {
-      await wallet.connect()
+    if (!wallet) {
+      setStatus('❌ No wallet detected. Please install Phantom.')
+      return
+    }
+
+    setLoading(true)
+    setStatus('Connecting wallet...')
+
+    try {
+      if (!wallet.isConnected) {
+        await wallet.connect()
+      }
+    } catch (err: any) {
+      setLoading(false)
+      if (err.name === 'WalletNotSelectedError') {
+        setStatus('❌ Wallet not selected. Open Phantom and select your wallet.')
+      } else {
+        console.error(err)
+        setStatus('❌ Error connecting wallet')
+      }
+      return
     }
 
     if (!wallet.publicKey) {
-      setStatus('Failed to connect wallet')
+      setLoading(false)
+      setStatus('❌ Failed to get public key')
       return
     }
 
     if (!wallet.signMessage) {
-      setStatus('Wallet does not support message signing')
+      setLoading(false)
+      setStatus('❌ Wallet does not support message signing')
       return
     }
 
-    setStatus('Connected: ' + wallet.publicKey.toString())
+    setStatus(`Connected: ${wallet.publicKey.toString()}`)
 
     try {
       const walletAddress = wallet.publicKey.toString()
 
-      // 1. Request a nonce from backend
+      // Request nonce from backend
       const nonceRes = await fetch(`/api/nonce?wallet=${walletAddress}`)
+      if (!nonceRes.ok) throw new Error('Failed to fetch nonce')
       const nonce = await nonceRes.text()
 
-      // 2. Sign the nonce with wallet
+      // Sign nonce
       const encodedMessage = new TextEncoder().encode(nonce)
       const signedMessage = await wallet.signMessage(encodedMessage)
       const signature = bs58.encode(signedMessage)
 
-      // 3. Send signed message to backend to create user
+      // Send to signup API
       const signupRes = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,28 +93,42 @@ function WalletSignup() {
       } else {
         setStatus('❌ Signup failed')
       }
-
     } catch (err) {
       console.error(err)
       setStatus('❌ Error during wallet signup')
+    } finally {
+      setLoading(false)
     }
   }
 
+  if (!walletAvailable) {
+    return (
+      <div className="text-center py-10">
+        <p className="text-red-500 mb-4">Phantom wallet not detected.</p>
+        <a
+          href="https://phantom.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500 underline"
+        >
+          Install Phantom Wallet
+        </a>
+      </div>
+    )
+  }
+
   return (
-    <>
-      <Button
-        className="w-full h-12 text-base mb-2"
-        onClick={handleWalletSignup}
-      >
-        Connect Phantom Wallet
-      </Button>
-      <p className="text-sm text-muted-foreground">{status}</p>
-    </>
+    <Button
+      className="w-full h-12 text-base mb-2"
+      onClick={handleWalletSignup}
+      disabled={loading}
+    >
+      {loading ? 'Connecting...' : 'Connect Phantom Wallet'}
+    </Button>
   )
 }
 
 export default function SignupPage() {
-  const router = useRouter()
   const wallets = useMemo(() => [new PhantomWalletAdapter()], [])
 
   return (
@@ -97,8 +139,8 @@ export default function SignupPage() {
           <div className="flex-1 flex flex-col justify-center px-8 lg:px-16">
             <div className="w-full max-w-md mx-auto">
               {/* Back link */}
-              <Link 
-                href="/auth/login" 
+              <Link
+                href="/auth/login"
                 className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
