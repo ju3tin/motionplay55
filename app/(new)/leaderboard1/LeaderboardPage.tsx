@@ -7,7 +7,7 @@ import Leaderboard from '@/components/Leaderboard1';
 export default function LeaderboardPage() {
   const params      = useSearchParams();
   const wallet      = useWallet();
-  const compAddress = params.get('comp') ?? '';
+  const compAddress = params?.get('comp') ?? '';
 
   return (
     <main style={{ maxWidth: 680, margin: '40px auto', padding: '0 24px' }}>
