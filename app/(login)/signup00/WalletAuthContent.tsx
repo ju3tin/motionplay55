@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { supabase } from '@/lib/supabase1';   // ← Add this import
 
 export default function WalletAuthContent() {
   const { publicKey, signMessage, connected } = useWallet();
