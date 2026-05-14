@@ -5,7 +5,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { PublicKey } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
-import { buildSignMessage } from "../nonce/route";
+import { buildSignMessage } from "@/lib/auth/walletUtils";
 
 // Admin client bypasses RLS — only use server-side
 function getAdminClient() {
