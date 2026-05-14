@@ -1,3 +1,4 @@
+// app/(login)/signup00/SolanaSignupClient.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
