@@ -13,7 +13,7 @@ export default function SolanaSignup() {
   const [success, setSuccess] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Listen to auth state
+  // Listen to auth changes
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -39,16 +39,14 @@ export default function SolanaSignup() {
       const message = `Sign this message to create your account\n\nWallet: ${walletAddress}\nTimestamp: ${timestamp}`;
 
       const encodedMessage = new TextEncoder().encode(message);
-      
-      // Get signature as Uint8Array (this is what Supabase expects)
-      const signatureUint8 = await signMessage(encodedMessage);
+      const signature = await signMessage(encodedMessage);
 
-      // Call Supabase with correct types
+      // Correct call for manual signature (wallet-adapter)
       const { data, error: authError } = await supabase.auth.signInWithWeb3({
         chain: 'solana',
         statement: message,
-        signature: signatureUint8,        // ← Uint8Array (important!)
-        publicKey: walletAddress,
+        signature,           // Uint8Array - this is correct
+        // Do NOT pass publicKey here
       });
 
       if (authError) throw authError;
