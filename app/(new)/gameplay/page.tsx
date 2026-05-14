@@ -312,7 +312,7 @@ function PlayChallengeInner() {
   const wallet      = useWallet();
   const isMobile    = useIsMobile();
   const compAddress = params?.get('comp') ?? '';
-  const gameId      = parseInt(params.get('gameId') ?? '0', 10);
+  const gameId      = parseInt(params?.get('gameId') ?? '0', 10);
   const [gameError, setGameError] = useState('');
 
   const { joinState, joinError, join } = useJoin(compAddress, wallet);
