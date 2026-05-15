@@ -29,7 +29,7 @@ export default function SignUpWithSolana() {
   }
 
   return (
-    <div style={{ marginTop: 20 }}>
+    <div style={{ marginTop: 100 }}>
       <button onClick={handleSolanaSignup} disabled={loading}>
         {loading ? "Connecting..." : "Sign up with Solana"}
       </button>
