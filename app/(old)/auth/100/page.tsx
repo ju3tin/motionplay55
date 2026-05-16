@@ -74,7 +74,7 @@ export default function LoginButton() {
   }
 
   return (
-    <div style={{ top: '100px' }}>
+    <div className="absolute top-[100px]">
     <button onClick={login} disabled={loading}>
       {loading ? "Connecting..." : "Login with Phantom"}
     </button>
