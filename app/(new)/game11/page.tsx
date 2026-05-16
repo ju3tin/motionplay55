@@ -48,6 +48,9 @@ export default function Page() {
 
       if (!canvasCtx4) return;
 
+      // non-null typed context
+      const ctx = canvasCtx4;
+
       // iPhone fixes
       video4.setAttribute('playsinline', 'true');
       video4.setAttribute('autoplay', 'true');
@@ -55,8 +58,11 @@ export default function Page() {
 
       // ---------- CONNECT FUNCTION ----------
 
-      function connect(ctx: CanvasRenderingContext2D, connectors: any[]) {
-        const canvas = ctx.canvas;
+      function connect(
+        ctx2d: CanvasRenderingContext2D,
+        connectors: any[]
+      ) {
+        const canvas = ctx2d.canvas;
 
         for (const connector of connectors) {
           const from = connector[0];
@@ -72,13 +78,19 @@ export default function Page() {
             continue;
           }
 
-          ctx.beginPath();
+          ctx2d.beginPath();
 
-          ctx.moveTo(from.x * canvas.width, from.y * canvas.height);
+          ctx2d.moveTo(
+            from.x * canvas.width,
+            from.y * canvas.height
+          );
 
-          ctx.lineTo(to.x * canvas.width, to.y * canvas.height);
+          ctx2d.lineTo(
+            to.x * canvas.width,
+            to.y * canvas.height
+          );
 
-          ctx.stroke();
+          ctx2d.stroke();
         }
       }
 
@@ -95,20 +107,26 @@ export default function Page() {
         out4.width = results.image.width;
         out4.height = results.image.height;
 
-        canvasCtx4.save();
+        ctx.save();
 
-        canvasCtx4.clearRect(0, 0, out4.width, out4.height);
+        ctx.clearRect(0, 0, out4.width, out4.height);
 
         // Draw camera image
-        canvasCtx4.drawImage(results.image, 0, 0, out4.width, out4.height);
+        ctx.drawImage(
+          results.image,
+          0,
+          0,
+          out4.width,
+          out4.height
+        );
 
-        canvasCtx4.lineWidth = 3;
+        ctx.lineWidth = 3;
 
         // ---------- POSE ----------
 
         if (results.poseLandmarks) {
           window.drawConnectors(
-            canvasCtx4,
+            ctx,
             results.poseLandmarks,
             window.POSE_CONNECTIONS,
             {
@@ -117,18 +135,22 @@ export default function Page() {
             }
           );
 
-          window.drawLandmarks(canvasCtx4, results.poseLandmarks, {
-            color: '#00FF00',
-            fillColor: '#FF0000',
-            radius: 3,
-          });
+          window.drawLandmarks(
+            ctx,
+            results.poseLandmarks,
+            {
+              color: '#00FF00',
+              fillColor: '#FF0000',
+              radius: 3,
+            }
+          );
         }
 
         // ---------- RIGHT HAND ----------
 
         if (results.rightHandLandmarks) {
           window.drawConnectors(
-            canvasCtx4,
+            ctx,
             results.rightHandLandmarks,
             window.HAND_CONNECTIONS,
             {
@@ -138,7 +160,7 @@ export default function Page() {
           );
 
           window.drawLandmarks(
-            canvasCtx4,
+            ctx,
             results.rightHandLandmarks,
             {
               color: '#00FF00',
@@ -149,9 +171,9 @@ export default function Page() {
 
           // Connect elbow to hand
           if (results.poseLandmarks) {
-            canvasCtx4.strokeStyle = '#00FF00';
+            ctx.strokeStyle = '#00FF00';
 
-            connect(canvasCtx4, [
+            connect(ctx, [
               [
                 results.poseLandmarks[
                   window.POSE_LANDMARKS.RIGHT_ELBOW
@@ -166,7 +188,7 @@ export default function Page() {
 
         if (results.leftHandLandmarks) {
           window.drawConnectors(
-            canvasCtx4,
+            ctx,
             results.leftHandLandmarks,
             window.HAND_CONNECTIONS,
             {
@@ -176,7 +198,7 @@ export default function Page() {
           );
 
           window.drawLandmarks(
-            canvasCtx4,
+            ctx,
             results.leftHandLandmarks,
             {
               color: '#FF0000',
@@ -187,9 +209,9 @@ export default function Page() {
 
           // Connect elbow to hand
           if (results.poseLandmarks) {
-            canvasCtx4.strokeStyle = '#FF0000';
+            ctx.strokeStyle = '#FF0000';
 
-            connect(canvasCtx4, [
+            connect(ctx, [
               [
                 results.poseLandmarks[
                   window.POSE_LANDMARKS.LEFT_ELBOW
@@ -200,7 +222,7 @@ export default function Page() {
           }
         }
 
-        canvasCtx4.restore();
+        ctx.restore();
       }
 
       // ---------- HOLISTIC ----------
@@ -300,7 +322,9 @@ export default function Page() {
       }
     };
 
-    const timeout = setTimeout(init, 1000);
+    const timeout = setTimeout(() => {
+      init();
+    }, 1000);
 
     return () => {
       clearTimeout(timeout);
@@ -314,6 +338,7 @@ export default function Page() {
   return (
     <>
       {/* MediaPipe Scripts */}
+
       <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
         strategy="beforeInteractive"
@@ -345,6 +370,8 @@ export default function Page() {
           position: 'relative',
         }}
       >
+        {/* Loading */}
+
         <div
           ref={loadingRef}
           style={{
@@ -359,6 +386,8 @@ export default function Page() {
           Loading camera...
         </div>
 
+        {/* Hidden Video */}
+
         <video
           ref={videoRef}
           playsInline
@@ -368,6 +397,8 @@ export default function Page() {
             display: 'none',
           }}
         />
+
+        {/* Canvas */}
 
         <canvas
           ref={canvasRef}
@@ -381,6 +412,8 @@ export default function Page() {
             zIndex: 1,
           }}
         />
+
+        {/* Controls */}
 
         <div
           ref={controlsRef}
