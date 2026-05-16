@@ -6,10 +6,6 @@ import Script from 'next/script';
 declare global {
   interface Window {
     Camera: any;
-    ControlPanel: any;
-    StaticText: any;
-    Toggle: any;
-    Slider: any;
     Holistic: any;
     drawConnectors: any;
     drawLandmarks: any;
@@ -22,16 +18,16 @@ declare global {
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const controlsRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
 
   const [scriptsLoaded, setScriptsLoaded] = useState(0);
 
   useEffect(() => {
-    if (scriptsLoaded < 4) return;
+    if (scriptsLoaded < 3) return;
 
     let camera: any;
     let holistic: any;
+    let isProcessing = false;
 
     const init = async () => {
       if (
@@ -40,20 +36,18 @@ export default function Page() {
         !videoRef.current ||
         !canvasRef.current
       ) {
-        console.log('MediaPipe not ready');
         return;
       }
 
-      const video4 = videoRef.current;
-      const out4 = canvasRef.current;
-      const controlsElement4 = controlsRef.current;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
       const loading = loadingRef.current;
 
-      const canvasCtx4 = out4.getContext('2d');
+      const canvasCtx = canvas.getContext('2d');
 
-      if (!canvasCtx4) return;
+      if (!canvasCtx) return;
 
-      const ctx = canvasCtx4;
+      const ctx = canvasCtx;
 
       // ---------- CONNECT FUNCTION ----------
 
@@ -61,7 +55,7 @@ export default function Page() {
         ctx2d: CanvasRenderingContext2D,
         connectors: any[]
       ) {
-        const canvas = ctx2d.canvas;
+        const canvasEl = ctx2d.canvas;
 
         for (const connector of connectors) {
           const from = connector[0];
@@ -72,13 +66,13 @@ export default function Page() {
           ctx2d.beginPath();
 
           ctx2d.moveTo(
-            from.x * canvas.width,
-            from.y * canvas.height
+            from.x * canvasEl.width,
+            from.y * canvasEl.height
           );
 
           ctx2d.lineTo(
-            to.x * canvas.width,
-            to.y * canvas.height
+            to.x * canvasEl.width,
+            to.y * canvasEl.height
           );
 
           ctx2d.stroke();
@@ -87,26 +81,27 @@ export default function Page() {
 
       // ---------- RESULTS ----------
 
-      function onResultsHolistic(results: any) {
+      function onResults(results: any) {
         if (loading) {
           loading.style.display = 'none';
         }
 
         if (!results.image) return;
 
-        out4.width = results.image.width;
-        out4.height = results.image.height;
+        canvas.width = results.image.width;
+        canvas.height = results.image.height;
 
         ctx.save();
 
-        ctx.clearRect(0, 0, out4.width, out4.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // camera image
         ctx.drawImage(
           results.image,
           0,
           0,
-          out4.width,
-          out4.height
+          canvas.width,
+          canvas.height
         );
 
         // ---------- POSE ----------
@@ -118,17 +113,17 @@ export default function Page() {
             window.POSE_CONNECTIONS,
             {
               color: '#00FF00',
-              lineWidth: 3,
+              lineWidth: 2,
             }
           );
 
+          // reduced landmark rendering for performance
           window.drawLandmarks(
             ctx,
             results.poseLandmarks,
             {
               color: '#00FF00',
-              fillColor: '#FF0000',
-              radius: 3,
+              radius: 1,
             }
           );
         }
@@ -146,16 +141,7 @@ export default function Page() {
             }
           );
 
-          window.drawLandmarks(
-            ctx,
-            results.rightHandLandmarks,
-            {
-              color: '#00FF00',
-              fillColor: '#FF0000',
-              radius: 2,
-            }
-          );
-
+          // connect elbow to hand
           if (results.poseLandmarks) {
             ctx.strokeStyle = '#00FF00';
 
@@ -178,21 +164,12 @@ export default function Page() {
             results.leftHandLandmarks,
             window.HAND_CONNECTIONS,
             {
-              color: '#CC0000',
+              color: '#FF0000',
               lineWidth: 2,
             }
           );
 
-          window.drawLandmarks(
-            ctx,
-            results.leftHandLandmarks,
-            {
-              color: '#FF0000',
-              fillColor: '#00FF00',
-              radius: 2,
-            }
-          );
-
+          // connect elbow to hand
           if (results.poseLandmarks) {
             ctx.strokeStyle = '#FF0000';
 
@@ -201,7 +178,7 @@ export default function Page() {
                 results.poseLandmarks[
                   window.POSE_LANDMARKS.LEFT_ELBOW
                 ],
-                results.rightHandLandmarks[0],
+                results.leftHandLandmarks[0],
               ],
             ]);
           }
@@ -218,29 +195,50 @@ export default function Page() {
         },
       });
 
+      // PERFORMANCE OPTIMIZED SETTINGS
       holistic.setOptions({
         selfieMode: true,
+
+        // LOWEST CPU MODE
         modelComplexity: 0,
-        smoothLandmarks: true,
+
+        // smoother disabled for speed
+        smoothLandmarks: false,
+
         enableSegmentation: false,
+
         refineFaceLandmarks: false,
+
         minDetectionConfidence: 0.5,
+
         minTrackingConfidence: 0.5,
       });
 
-      holistic.onResults(onResultsHolistic);
+      holistic.onResults(onResults);
 
       // ---------- CAMERA ----------
 
-      camera = new window.Camera(video4, {
+      camera = new window.Camera(video, {
         onFrame: async () => {
-          await holistic.send({
-            image: video4,
-          });
+          // skip frame while processing
+          if (isProcessing) return;
+
+          isProcessing = true;
+
+          try {
+            await holistic.send({
+              image: video,
+            });
+          } catch (err) {
+            console.error(err);
+          }
+
+          isProcessing = false;
         },
 
-        width: 640,
-        height: 480,
+        // LOWER RESOLUTION = BETTER FPS
+        width: 320,
+        height: 240,
       });
 
       try {
@@ -253,44 +251,6 @@ export default function Page() {
         alert(
           'Camera failed. Use HTTPS and allow camera permissions.'
         );
-      }
-
-      // ---------- CONTROLS ----------
-
-      if (controlsElement4) {
-        new window.ControlPanel(controlsElement4, {
-          selfieMode: true,
-          smoothLandmarks: true,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        })
-          .add([
-            new window.StaticText({
-              title: 'MediaPipe Holistic',
-            }),
-
-            new window.Toggle({
-              title: 'Selfie Mode',
-              field: 'selfieMode',
-            }),
-
-            new window.Slider({
-              title: 'Min Detection Confidence',
-              field: 'minDetectionConfidence',
-              range: [0, 1],
-              step: 0.01,
-            }),
-
-            new window.Slider({
-              title: 'Min Tracking Confidence',
-              field: 'minTrackingConfidence',
-              range: [0, 1],
-              step: 0.01,
-            }),
-          ])
-          .on((options: any) => {
-            holistic.setOptions(options);
-          });
       }
     };
 
@@ -318,12 +278,6 @@ export default function Page() {
       />
 
       <Script
-        src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
-        strategy="afterInteractive"
-        onLoad={onScriptLoad}
-      />
-
-      <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
         strategy="afterInteractive"
         onLoad={onScriptLoad}
@@ -344,6 +298,8 @@ export default function Page() {
           background: '#000',
         }}
       >
+        {/* Loading */}
+
         <div
           ref={loadingRef}
           style={{
@@ -352,10 +308,14 @@ export default function Page() {
             left: 20,
             color: '#fff',
             zIndex: 10,
+            fontSize: 14,
+            fontFamily: 'Arial',
           }}
         >
           Loading camera...
         </div>
+
+        {/* Hidden Video */}
 
         <video
           ref={videoRef}
@@ -367,6 +327,8 @@ export default function Page() {
           }}
         />
 
+        {/* Canvas */}
+
         <canvas
           ref={canvasRef}
           style={{
@@ -376,17 +338,6 @@ export default function Page() {
             width: '100vw',
             height: '100vh',
             objectFit: 'cover',
-          }}
-        />
-
-        <div
-          ref={controlsRef}
-          style={{
-            position: 'fixed',
-            bottom: 10,
-            left: 10,
-            right: 10,
-            zIndex: 10,
           }}
         />
       </main>
