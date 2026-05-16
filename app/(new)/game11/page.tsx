@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
 declare global {
@@ -25,7 +25,11 @@ export default function Page() {
   const controlsRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
 
+  const [scriptsLoaded, setScriptsLoaded] = useState(0);
+
   useEffect(() => {
+    if (scriptsLoaded < 4) return;
+
     let camera: any;
     let holistic: any;
 
@@ -36,6 +40,7 @@ export default function Page() {
         !videoRef.current ||
         !canvasRef.current
       ) {
+        console.log('MediaPipe not ready');
         return;
       }
 
@@ -48,13 +53,7 @@ export default function Page() {
 
       if (!canvasCtx4) return;
 
-      // non-null typed context
       const ctx = canvasCtx4;
-
-      // iPhone fixes
-      video4.setAttribute('playsinline', 'true');
-      video4.setAttribute('autoplay', 'true');
-      video4.setAttribute('muted', 'true');
 
       // ---------- CONNECT FUNCTION ----------
 
@@ -69,14 +68,6 @@ export default function Page() {
           const to = connector[1];
 
           if (!from || !to) continue;
-
-          if (
-            from.visibility &&
-            to.visibility &&
-            (from.visibility < 0.1 || to.visibility < 0.1)
-          ) {
-            continue;
-          }
 
           ctx2d.beginPath();
 
@@ -103,7 +94,6 @@ export default function Page() {
 
         if (!results.image) return;
 
-        // Match canvas to video size
         out4.width = results.image.width;
         out4.height = results.image.height;
 
@@ -111,7 +101,6 @@ export default function Page() {
 
         ctx.clearRect(0, 0, out4.width, out4.height);
 
-        // Draw camera image
         ctx.drawImage(
           results.image,
           0,
@@ -119,8 +108,6 @@ export default function Page() {
           out4.width,
           out4.height
         );
-
-        ctx.lineWidth = 3;
 
         // ---------- POSE ----------
 
@@ -169,7 +156,6 @@ export default function Page() {
             }
           );
 
-          // Connect elbow to hand
           if (results.poseLandmarks) {
             ctx.strokeStyle = '#00FF00';
 
@@ -207,7 +193,6 @@ export default function Page() {
             }
           );
 
-          // Connect elbow to hand
           if (results.poseLandmarks) {
             ctx.strokeStyle = '#FF0000';
 
@@ -216,7 +201,7 @@ export default function Page() {
                 results.poseLandmarks[
                   window.POSE_LANDMARKS.LEFT_ELBOW
                 ],
-                results.leftHandLandmarks[0],
+                results.rightHandLandmarks[0],
               ],
             ]);
           }
@@ -233,7 +218,6 @@ export default function Page() {
         },
       });
 
-      // Mobile optimized settings
       holistic.setOptions({
         selfieMode: true,
         modelComplexity: 0,
@@ -250,33 +234,26 @@ export default function Page() {
 
       camera = new window.Camera(video4, {
         onFrame: async () => {
-          try {
-            await holistic.send({
-              image: video4,
-            });
-          } catch (err) {
-            console.error(err);
-          }
+          await holistic.send({
+            image: video4,
+          });
         },
 
         width: 640,
         height: 480,
       });
 
-      // ---------- START ----------
+      try {
+        await camera.start();
 
-      camera
-        .start()
-        .then(() => {
-          console.log('Camera started');
-        })
-        .catch((err: any) => {
-          console.error(err);
+        console.log('Camera started');
+      } catch (err) {
+        console.error(err);
 
-          alert(
-            'Camera failed. Use HTTPS and allow camera permissions.'
-          );
-        });
+        alert(
+          'Camera failed. Use HTTPS and allow camera permissions.'
+        );
+      }
 
       // ---------- CONTROLS ----------
 
@@ -312,28 +289,23 @@ export default function Page() {
             }),
           ])
           .on((options: any) => {
-            video4.classList.toggle(
-              'selfie',
-              options.selfieMode
-            );
-
             holistic.setOptions(options);
           });
       }
     };
 
-    const timeout = setTimeout(() => {
-      init();
-    }, 1000);
+    init();
 
     return () => {
-      clearTimeout(timeout);
-
-      if (camera && camera.stop) {
+      if (camera?.stop) {
         camera.stop();
       }
     };
-  }, []);
+  }, [scriptsLoaded]);
+
+  const onScriptLoad = () => {
+    setScriptsLoaded((prev) => prev + 1);
+  };
 
   return (
     <>
@@ -341,52 +313,49 @@ export default function Page() {
 
       <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
+        onLoad={onScriptLoad}
       />
 
       <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
+        onLoad={onScriptLoad}
       />
 
       <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
+        onLoad={onScriptLoad}
       />
 
       <Script
         src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
+        onLoad={onScriptLoad}
       />
 
       <main
         style={{
-          margin: 0,
-          padding: 0,
-          overflow: 'hidden',
-          background: '#000',
           width: '100vw',
           height: '100vh',
+          overflow: 'hidden',
           position: 'relative',
+          background: '#000',
         }}
       >
-        {/* Loading */}
-
         <div
           ref={loadingRef}
           style={{
             position: 'fixed',
-            top: '20px',
-            left: '20px',
-            color: 'white',
+            top: 20,
+            left: 20,
+            color: '#fff',
             zIndex: 10,
-            fontSize: '14px',
           }}
         >
           Loading camera...
         </div>
-
-        {/* Hidden Video */}
 
         <video
           ref={videoRef}
@@ -398,8 +367,6 @@ export default function Page() {
           }}
         />
 
-        {/* Canvas */}
-
         <canvas
           ref={canvasRef}
           style={{
@@ -409,19 +376,16 @@ export default function Page() {
             width: '100vw',
             height: '100vh',
             objectFit: 'cover',
-            zIndex: 1,
           }}
         />
-
-        {/* Controls */}
 
         <div
           ref={controlsRef}
           style={{
             position: 'fixed',
-            bottom: '10px',
-            left: '10px',
-            right: '10px',
+            bottom: 10,
+            left: 10,
+            right: 10,
             zIndex: 10,
           }}
         />
