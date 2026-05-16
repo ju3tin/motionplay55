@@ -2,9 +2,23 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { createClient } from '@/lib/supabase/client'
+
+/*
+
+import { createClient } from '@/lib/supabase/client'
+
+export default function SignUpWithSolana() {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const supabase = createClient()
+
+*/
+
 
 export default function LoginButton() {
   const [loading, setLoading] = useState(false);
+   const supabase = createClient()
 
   async function login() {
     setLoading(true);
