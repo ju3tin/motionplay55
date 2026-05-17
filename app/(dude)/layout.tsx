@@ -1,12 +1,10 @@
-import Providers from "@/app/providers";
+import { WalletProvider } from '@/app/providers/WalletProvider';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Providers>
-          {children}
-        </Providers>
+        <WalletProvider>{children}</WalletProvider>
       </body>
     </html>
   );
