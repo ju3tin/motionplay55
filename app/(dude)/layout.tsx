@@ -1,4 +1,4 @@
-import Providers from "@/app/providers/WalletProvider";
+import Providers from "@/app/providers";
 
 export default function RootLayout({ children }) {
   return (
