@@ -5,14 +5,14 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
-  BackpackWalletAdapter,
+//  BackpackWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
 
 export default function SolanaProvider({ children }: any) {
   const wallets = [
     new PhantomWalletAdapter(),
     new SolflareWalletAdapter(),
-    new BackpackWalletAdapter(),
+  //  new BackpackWalletAdapter(),
   ];
 
   return (
