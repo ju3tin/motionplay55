@@ -1,25 +1,11 @@
-"use client";
+import Providers from "./providers";
 
-import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-//  BackpackWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
-
-export default function SolanaProvider({ children }: any) {
-  const wallets = [
-    new PhantomWalletAdapter(),
-    new SolflareWalletAdapter(),
-  //  new BackpackWalletAdapter(),
-  ];
-
+export default function RootLayout({ children }) {
   return (
-    <ConnectionProvider endpoint="https://api.devnet.solana.com">
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>{children}</WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <html>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
   );
 }
