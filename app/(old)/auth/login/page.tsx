@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from "react"
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
