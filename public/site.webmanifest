@@ -1,7 +1,7 @@
 {
-  "name": "My Awesome App",
-  "short_name": "AwesomeApp",
-  "description": "A simple Progressive Web App example",
+  "name": "Motion Play",
+  "short_name": "MotionPlay",
+  "description": "A Motion Play a game that uses motion to play",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
