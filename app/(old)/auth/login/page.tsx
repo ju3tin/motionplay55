@@ -206,7 +206,7 @@ export default function LoginPage() {
               {/* <WalletLogin /> */}
 
               <SignInWithSolanaButton
-  redirectTo="/dashboard"
+  redirectTo="/profile"
   className="rounded-lg bg-purple-600 px-4 py-2 text-white"
 >
   Connect Wallet
