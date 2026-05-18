@@ -127,13 +127,14 @@ export default function LeaderboardPage() {
         <div className="container mx-auto px-4">
           {/* Header */}
           <div className="text-center mb-12">
+            {/*
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
               <Flame className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium text-primary">
                 Top Players
               </span>
             </div>
-
+*/}
             <h1 className="text-4xl md:text-5xl font-serif font-bold mb-4">
               Leaderboard
             </h1>
