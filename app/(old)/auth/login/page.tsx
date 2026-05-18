@@ -203,7 +203,7 @@ export default function LoginPage() {
               </div>
 
               {/* SOLANA WALLET LOGIN */}
-              <WalletLogin />
+              {/* <WalletLogin /> */}
 
               <SignInWithSolanaButton
   redirectTo="/dashboard"
