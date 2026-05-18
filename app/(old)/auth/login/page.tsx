@@ -256,21 +256,39 @@ export default function LoginPage() {
                 redirectTo="/profile"
                 className="rounded-lg bg-purple-600 px-4 py-2 text-white"
               >
-                Connect Wallet
+               <Image
+    src="/images/solana.svg"
+    alt="Google"
+    width={18}
+    height={18}
+    className="mr-2"
+  />  Connect Wallet
               </SignInWithSolanaButton>
 
               <OAuthButton
                 provider="github"
                 className="rounded-lg bg-purple-600 px-4 py-2 text-white"
               >
-                Continue with GitHub
+             <Image
+    src="/images/github.svg"
+    alt="Google"
+    width={18}
+    height={18}
+    className="mr-2"
+  />   Continue with GitHub
               </OAuthButton>
 
               <OAuthButton
                 provider="google"
                 className="rounded-lg bg-purple-600 px-4 py-2 text-white"
               >
-                Continue with Google
+             <Image
+    src="/images/google.svg"
+    alt="Google"
+    width={18}
+    height={18}
+    className="mr-2"
+  />   Continue with Google
               </OAuthButton>
 
               <p className="text-center text-sm text-muted-foreground mt-8">
