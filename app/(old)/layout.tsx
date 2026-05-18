@@ -6,6 +6,7 @@ import './globals.css'
 import { SidebarLayout } from '@/components/SidebarLayout'
 import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/Sidebar2"
+import Head from 'next/head'
 
 
 
@@ -88,6 +89,9 @@ const {
 
   return (
     <html lang="en">
+      <head>
+      <link rel="manifest" href="/site.webmanifest" />
+      </head>
       <body className={`font-sans antialiased`}>
         <Sidebar />
         {children}
