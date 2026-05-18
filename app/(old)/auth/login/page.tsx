@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { Activity, ArrowLeft, Loader2 } from 'lucide-react'
 import SignInWithSolanaButton from "@/components/auth/SignInWithSolanaButton";
 import OAuthButton from "@/components/auth/OAuthButton";
+import { Robot } from '@/components/robot'
 
 import {
   ConnectionProvider,
@@ -236,6 +237,7 @@ export default function LoginPage() {
             </div>
             
             <div className="relative z-10 text-center px-12">
+              <Robot scrollT={t} />
               <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-primary/10 flex items-center justify-center">
                 <Activity className="w-16 h-16 text-primary" />
               </div>
