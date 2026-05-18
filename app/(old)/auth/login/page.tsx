@@ -212,9 +212,9 @@ export default function LoginPage() {
 >
   Connect Wallet
 </SignInWithSolanaButton>
-              <OAuthButton provider="github">
+              <OAuthButton provider="github" className="rounded-lg bg-purple-600 px-4 py-2 text-white">
   Continue with GitHub
-</OAuthButton><OAuthButton provider="google">
+</OAuthButton><OAuthButton provider="google" className="rounded-lg bg-purple-600 px-4 py-2 text-white">
   Continue with Google
 </OAuthButton>
 
