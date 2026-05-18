@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Activity, ArrowLeft, Loader2 } from 'lucide-react'
+import SignInWithSolanaButton from "@/components/auth/SignInWithSolanaButton";
 
 import {
   ConnectionProvider,
@@ -203,6 +204,13 @@ export default function LoginPage() {
 
               {/* SOLANA WALLET LOGIN */}
               <WalletLogin />
+
+              <SignInWithSolanaButton
+  redirectTo="/dashboard"
+  className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+>
+  Connect Wallet
+</SignInWithSolanaButton>
 
               {/* Sign up link */}
               <p className="text-center text-sm text-muted-foreground mt-8">
