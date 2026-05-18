@@ -41,35 +41,30 @@ export const metadata: Metadata = {
     description: 'Solana competition platform',
     url: 'https://motionplay.vercel.app',
     siteName: 'MotionPlay',
-    images: [
-      {
-        url: '/image3.png', // put in /public
-        width: 1200,
-        height: 630,
-        alt: 'MotionPlay',
-      },
-    ],
+   images: [
+  {
+    url: 'https://motionplay.vercel.app/image3.png',
+    width: 1200,
+    height: 630,
+    alt: 'MotionPlay',
+  },
+],
     locale: 'en_UK',
     type: 'website',
   },
 
   twitter: {
-    card: 'summary_large_image',
-    title: 'MotionPlay',
-    description: 'Solana competition platform',
-    creator: '@motionplay',
-    images: ['/twitter-image.png'],
-  },
+  card: 'summary_large_image',
+  title: 'MotionPlay',
+  description: 'Solana competition platform',
+  creator: '@motionplay',
+  images: ['https://motionplay.vercel.app/twitter-image.png'],
+},
 
   icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon-16x16.png',
-    apple: '/apple-touch-icon.png',
-  },
-
-  robots: {
-    index: true,
-    follow: true,
+    icon: 'https://motionplay.vercel.app/favicon.ico',
+    shortcut: 'https://motionplay.vercel.app/favicon-16x16.png',
+    apple: 'https://motionplay.vercel.app/apple-touch-icon.png',
   },
 
   alternates: {
