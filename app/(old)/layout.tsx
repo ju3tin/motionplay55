@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     siteName: 'MotionPlay',
     images: [
       {
-        url: '/og-image.png', // put in /public
+        url: '/image3.png', // put in /public
         width: 1200,
         height: 630,
         alt: 'MotionPlay',
