@@ -255,7 +255,7 @@ export default function LoginPage() {
 
               <SignInWithSolanaButton
                 redirectTo="/profile"
-                className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+                className="rounded-lg bg-purple-600 w-full h-12 text-base"
               >
                <Image
     src="/images/solana.svg"
@@ -268,7 +268,7 @@ export default function LoginPage() {
 
               <OAuthButton
                 provider="github"
-                className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+                className="rounded-lg bg-purple-600 w-full h-12 text-base"
               >
              <Image
     src="/images/github.svg"
@@ -281,7 +281,7 @@ export default function LoginPage() {
 
               <OAuthButton
                 provider="google"
-                className="rounded-lg bg-purple-600 px-4 py-2 text-white"
+                className="rounded-lg bg-purple-600 w-full h-12 text-base"
               >
              <Image
     src="/images/google.svg"
