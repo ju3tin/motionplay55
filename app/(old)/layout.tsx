@@ -7,6 +7,7 @@ import { SidebarLayout } from '@/components/SidebarLayout'
 import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/Sidebar2"
 import Head from 'next/head'
+import { ClientProviders } from '@/app/ClientProviders';
 
 
 
@@ -89,8 +90,8 @@ const {
       </head>
       <body className={`font-sans antialiased`}>
         <Sidebar />
-        {children}
-         
+        
+         <ClientProviders>{children}</ClientProviders>
         <Analytics />
       </body>
     </html>
