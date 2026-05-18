@@ -90,7 +90,6 @@ const {
       </head>
       <body className={`font-sans antialiased`}>
         <Sidebar />
-        
          <ClientProviders>{children}</ClientProviders>
         <Analytics />
       </body>
