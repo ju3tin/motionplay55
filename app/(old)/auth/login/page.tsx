@@ -24,6 +24,7 @@ import nacl from 'tweetnacl'
 function WalletLogin() {
   const wallet = useWallet()
   const router = useRouter()
+  const t = Math.min(1, scrollY / 800)
   const [status, setStatus] = useState('Not connected')
 
   const handleWalletLogin = async () => {
