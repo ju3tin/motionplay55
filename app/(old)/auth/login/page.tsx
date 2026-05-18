@@ -212,6 +212,11 @@ export default function LoginPage() {
 >
   Connect Wallet
 </SignInWithSolanaButton>
+              <OAuthButton provider="github">
+  Continue with GitHub
+</OAuthButton><OAuthButton provider="google">
+  Continue with Google
+</OAuthButton>
 
               {/* Sign up link */}
               <p className="text-center text-sm text-muted-foreground mt-8">
