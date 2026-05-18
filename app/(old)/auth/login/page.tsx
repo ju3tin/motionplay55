@@ -299,10 +299,10 @@ export default function LoginPage() {
 
               <Robot scrollT={scrollT} />
 
-              <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-primary/10 flex items-center justify-center">
+              {/* <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-primary/10 flex items-center justify-center">
                 <Activity className="w-16 h-16 text-primary" />
               </div>
-
+*/}
               <h2 className="font-serif text-3xl font-bold mb-4">
                 Move to Play
               </h2>
