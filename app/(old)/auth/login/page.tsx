@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Activity, ArrowLeft, Loader2 } from 'lucide-react'
-import SignInWithSolanaButton from "@/components/auth/SignInWithSolanaButton"
+import SignInWithSolanaButton from "@/components/auth/SignInSolana"
 import OAuthButton from "@/components/auth/OAuthButton"
 import { Robot } from '@/components/robot'
 
