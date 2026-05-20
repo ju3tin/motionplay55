@@ -16,6 +16,11 @@ import {
 
 type Props = {
   redirectTo?: string;
+  className?: string;
+  statement?: string;
+  onSuccess?: () => void;
+  onError?: (error: Error) => void;
+  children?: React.ReactNode;
 };
 
 export default function SignInWithSolanaButton({
