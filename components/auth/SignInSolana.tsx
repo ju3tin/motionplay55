@@ -95,34 +95,13 @@ export default function SignInWithSolanaButton({
     router,
     supabase,
   ]);
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Wallet Selector */}
+   return (
+    <div>
       <WalletMultiButton />
 
-      {/* Login */}
-      <button
-        onClick={handleLogin}
-        disabled={loading || !connected}
-        className="
-          rounded-lg
-          bg-black
-          px-4
-          py-2
-          text-white
-          disabled:opacity-50
-        "
-      >
-        {loading
-          ? "Connecting..."
-          : connected
-          ? `Login ${
-              publicKey
-                ?.toBase58()
-                .slice(0, 4)
-            }...`
-          : "Connect Wallet First"}
-      </button>
+      {loading && (
+        <p>Signing in...</p>
+      )}
     </div>
   );
 }
