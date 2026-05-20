@@ -34,6 +34,9 @@ export default function SignInWithSolanaButton({
   const [loading, setLoading] =
     useState(false);
 
+  const [loggingIn, setLoggingIn] =
+    useState(false);
+
   const router = useRouter();
 
   const supabase = createClient();
@@ -41,42 +44,56 @@ export default function SignInWithSolanaButton({
   const {
     connected,
     publicKey,
-    connect,
   } = useWallet();
 
-  async function handleLogin() {
-    try {
-      setLoading(true);
-
-      // IMPORTANT FOR MOBILE
-      if (!connected) {
-        await connect();
+  // AUTO LOGIN AFTER CONNECT
+  useEffect(() => {
+    async function login() {
+      if (
+        !connected ||
+        !publicKey ||
+        loggingIn
+      ) {
+        return;
       }
 
-      const { error } =
-        await supabase.auth.signInWithWeb3({
-          chain: "solana",
-          statement:
-            "Sign in to the app",
-        });
+      try {
+        setLoggingIn(true);
+        setLoading(true);
 
-      if (error) {
-        throw error;
+        const { error } =
+          await supabase.auth.signInWithWeb3({
+            chain: "solana",
+            statement:
+              "Sign in to the app",
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        router.push(redirectTo);
+      } catch (err: any) {
+        console.error(err);
+
+        alert(
+          err?.message ??
+            "Solana login failed"
+        );
+      } finally {
+        setLoading(false);
       }
-
-      router.push(redirectTo);
-    } catch (err: any) {
-      console.error(err);
-
-      alert(
-        err?.message ??
-          "Solana login failed"
-      );
-    } finally {
-      setLoading(false);
     }
-  }
 
+    login();
+  }, [
+    connected,
+    publicKey,
+    loggingIn,
+    redirectTo,
+    router,
+    supabase,
+  ]);
   return (
     <div className="flex flex-col gap-4">
       {/* Wallet Selector */}
