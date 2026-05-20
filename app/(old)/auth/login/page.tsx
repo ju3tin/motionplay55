@@ -19,7 +19,18 @@ import {
   useWallet
 } from "@solana/wallet-adapter-react"
 
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets"
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+ // BackpackWalletAdapter,
+  GlowWalletAdapter,
+  ExodusWalletAdapter,
+  NightlyWalletAdapter,
+  TrustWalletAdapter,
+  CoinbaseWalletAdapter,
+  LedgerWalletAdapter,
+  UnsafeBurnerWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
 
 function WalletLogin() {
   const wallet = useWallet()
@@ -107,9 +118,22 @@ export default function LoginPage() {
   const supabase = createClient()
 
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter()],
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+     // new BackpackWalletAdapter(),
+      new GlowWalletAdapter(),
+      new ExodusWalletAdapter(),
+      new NightlyWalletAdapter(),
+      new TrustWalletAdapter(),
+      new CoinbaseWalletAdapter(),
+      new LedgerWalletAdapter(),
+      
+      // DEV ONLY
+      new UnsafeBurnerWalletAdapter(),
+    ],
     []
-  )
+  );
 
   useEffect(() => {
     const handleScroll = () => {
