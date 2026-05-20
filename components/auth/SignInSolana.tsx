@@ -25,6 +25,11 @@ type Props = {
 
 export default function SignInWithSolanaButton({
   redirectTo = "/profile",
+  className,
+  statement = "I accept the Terms of Service at https://example.com/tos",
+  onSuccess,
+  onError,
+  children,
 }: Props) {
   const [loading, setLoading] =
     useState(false);
