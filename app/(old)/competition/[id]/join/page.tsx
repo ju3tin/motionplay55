@@ -20,9 +20,14 @@ import {
 import { cn } from "@/lib/utils"
 
 export default function ViewCompetitionPage() {
-  const params = useParams()
+  const params = useParams<{ id: string }>()
   const router = useRouter()
-  const competitionId = params.id as string
+
+  if (!params?.id) {
+    return null
+  }
+
+  const competitionId = params.id
   const competition = competitionsData[competitionId]
   const [activeTab, setActiveTab] = useState<"overview" | "leaderboard" | "rules">("overview")
 
