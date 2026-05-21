@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AchievementCard, Achievement } from "./achievement-card"
+import { AchievementCard, Achievement } from "@/components/achievements/achievement-card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 
