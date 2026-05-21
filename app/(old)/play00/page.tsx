@@ -51,7 +51,7 @@ const achievements: Achievement[] = [
     category: "motion",
   },
   // Streak Achievements
-  {
+  { 
     id: "warming-up",
     title: "Warming Up",
     description: "Play games for 3 consecutive days",
