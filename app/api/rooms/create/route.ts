@@ -27,14 +27,16 @@ export async function POST(request: NextRequest) {
       players: 1,
       maxPlayers,
       createdAt: Date.now(),
-      lastUpdated: Date.now(),
     };
 
     addRoom(newRoom);
 
     await pubnub.publish({
       channel: 'motionplay-lobby',
-      message: { type: 'new-room', ...newRoom },
+      message: { 
+        type: 'new-room', 
+        ...newRoom 
+      },
     });
 
     return NextResponse.json({
@@ -45,6 +47,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Create room error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message || 'Failed to create room' 
+    }, { status: 500 });
   }
 }
