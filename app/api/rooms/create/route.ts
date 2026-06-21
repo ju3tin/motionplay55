@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pubnub from '@/lib/pubnub';
+import PubNub from 'pubnub';
 import { v4 as uuidv4 } from 'uuid';
+
+// Force dynamic rendering (critical for API routes with external SDKs)
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const { hostId, maxPlayers = 4 } = await request.json();
+
+    // Initialize PubNub inside the handler (safe for build)
+    const pubnub = new PubNub({
+      publishKey: process.env.PUBNUB_PUBLISH_KEY!,
+      subscribeKey: process.env.PUBNUB_SUBSCRIBE_KEY!,
+    });
 
     const roomCode = uuidv4().slice(0, 8).toUpperCase();
     const channel = `motionplay-room-${roomCode}`;
@@ -23,9 +32,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, roomCode, channel });
+    return NextResponse.json({ 
+      success: true, 
+      roomCode, 
+      channel 
+    });
+
   } catch (error: any) {
     console.error('Create room error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message || 'Failed to create room' 
+    }, { status: 500 });
   }
 }
