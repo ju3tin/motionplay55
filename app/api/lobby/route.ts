@@ -3,14 +3,14 @@ import PubNub from 'pubnub';
 
 export const dynamic = 'force-dynamic';
 
-// Simple in-memory store for active rooms (good for dev & small scale)
+// In-memory store for active rooms
 let activeRooms = new Map<string, any>();
 
-// Optional: Clean up old rooms every 5 minutes
+// Clean up old rooms every 5 minutes (30 min expiration)
 setInterval(() => {
   const now = Date.now();
   for (const [code, room] of activeRooms.entries()) {
-    if (now - room.createdAt > 1000 * 60 * 30) { // 30 minutes timeout
+    if (now - room.createdAt > 1000 * 60 * 30) {
       activeRooms.delete(code);
     }
   }
@@ -18,7 +18,6 @@ setInterval(() => {
 
 export async function GET() {
   try {
-    // Return current active rooms
     const rooms = Array.from(activeRooms.values());
     
     return NextResponse.json({
@@ -36,7 +35,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, roomCode, channel, host, maxPlayers = 4 } = await request.json();
+    const body = await request.json(); // ← Fixed: await the promise
+    const { action, roomCode, channel, host, maxPlayers = 4, players } = body;
 
     const pubnub = new PubNub({
       publishKey: process.env.PUBNUB_PUBLISH_KEY!,
@@ -56,7 +56,6 @@ export async function POST(request: NextRequest) {
 
       activeRooms.set(roomCode, newRoom);
 
-      // Broadcast to lobby channel
       await pubnub.publish({
         channel: 'motionplay-lobby',
         message: {
@@ -71,9 +70,15 @@ export async function POST(request: NextRequest) {
     if (action === 'update') {
       const room = activeRooms.get(roomCode);
       if (room) {
-        room.players = request.json().players || room.players;
+        room.players = players || room.players;   // ← Now safe
         room.lastUpdated = Date.now();
         activeRooms.set(roomCode, room);
+
+        // Optional: Broadcast update
+        await pubnub.publish({
+          channel: 'motionplay-lobby',
+          message: { type: 'room-update', roomCode, players: room.players },
+        });
       }
     }
 
@@ -88,6 +93,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Lobby API Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message || 'Internal server error' 
+    }, { status: 500 });
   }
 }
