@@ -31,13 +31,24 @@ export async function POST(request: NextRequest) {
 
     addRoom(newRoom);
 
-    await pubnub.publish({
+    // Publish with better error handling
+    const publishResult = await pubnub.publish({
       channel: 'motionplay-lobby',
       message: { 
         type: 'new-room', 
         ...newRoom 
       },
+    }).catch((err: any) => {
+      console.error('PubNub Publish Failed:', {
+        statusCode: err.statusCode,
+        category: err.category,
+        message: err.message,
+        fullError: err
+      });
+      throw err;
     });
+
+    console.log('✅ PubNub publish successful:', publishResult);
 
     return NextResponse.json({
       success: true,
@@ -46,10 +57,15 @@ export async function POST(request: NextRequest) {
       room: newRoom,
     });
   } catch (error: any) {
-    console.error('Create room error:', error);
+    console.error('Full Create Room Error:', error);
+
     return NextResponse.json({ 
       success: false, 
-      error: error.message || 'Failed to create room' 
+      error: error.message || 'Failed to create room',
+      details: error.statusCode ? {
+        statusCode: error.statusCode,
+        category: error.category
+      } : null
     }, { status: 500 });
   }
 }
