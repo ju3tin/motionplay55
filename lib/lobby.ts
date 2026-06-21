@@ -6,7 +6,7 @@ export function getAllRooms() {
 }
 
 export function addRoom(room: any) {
-  if (!room.roomCode) {
+  if (!room?.roomCode) {
     throw new Error('Room must have roomCode');
   }
 
