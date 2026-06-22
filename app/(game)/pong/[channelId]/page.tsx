@@ -13,10 +13,13 @@ type State = {
 };
 
 export default function PongGame() {
-  const { channelId } = useParams<{ channelId: string }>();
+  const params = useParams<{ channelId: string } | null>();
+  const channelId = params?.channelId;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef(false);
+
+  if (!channelId) return null;
 
   const channel = useMemo(() => `pong-${channelId}`, [channelId]);
 
