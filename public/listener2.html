@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PubNub Listener</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .msg { padding: 10px; margin: 10px 0; background: #eee; border-radius: 6px; }
+  </style>
+</head>
+
+<body>
+<h1>Listener</h1>
+
+<p id="status">Status: idle</p>
+
+<div id="messages"></div>
+
+<script src="https://cdn.pubnub.com/sdk/javascript/pubnub.7.3.0.min.js"></script>
+
+<script>
+const pubnub = new PubNub({
+  publishKey: "YOUR_PUBLISH_KEY",
+  subscribeKey: "YOUR_SUBSCRIBE_KEY",
+  userId: "listener-user"
+});
+
+const channel = "test-channel";
+
+// STATUS
+pubnub.addListener({
+  status: function(s) {
+    console.log("STATUS:", s);
+    document.getElementById("status").innerText =
+      "Status: " + s.category;
+  },
+
+  message: function(event) {
+    console.log("MESSAGE:", event.message);
+
+    const div = document.createElement("div");
+    div.className = "msg";
+    div.innerText = JSON.stringify(event.message);
+
+    document.getElementById("messages").prepend(div);
+  }
+});
+
+pubnub.subscribe({
+  channels: [channel]
+});
+</script>
+
+</body>
+</html>
