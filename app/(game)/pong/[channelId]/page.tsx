@@ -15,7 +15,7 @@ type PongMessage =
   | { type: "input"; side: "left" | "right"; y: number }
   | { type: "state"; state: State }
   | { type: "gameOver"; winner: "left" | "right" }
-  | { type: "role"; isHost: boolean };
+  | { type: "role"; isHost: boolean; playerId: string };
 
 function isPongMessage(msg: unknown): msg is PongMessage {
   return typeof msg === "object" && msg !== null && "type" in msg;
@@ -31,8 +31,10 @@ export default function PongGame({
   const router = useRouter();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isHost = useRef(false);
   const pubnubRef = useRef<PubNub | null>(null);
+  const myPlayerId = useRef(`p-${Math.random().toString(36).substring(2)}`);
+
+  const isHost = useRef(false);
 
   const gameStateRef = useRef<State>({
     ball: { x: 400, y: 200, vx: 3.5, vy: 2 },
@@ -50,21 +52,25 @@ export default function PongGame({
   const gameRunningRef = useRef(false);
   const [, forceUpdate] = useState({});
 
-  // ==================== HOST SETUP + ROLE ANNOUNCEMENT ====================
+  // ==================== ROLE ASSIGNMENT ====================
   useEffect(() => {
     const hostKey = `pong-host-${channelId}`;
+
+    // First visitor becomes Host (Player 1)
     if (!localStorage.getItem(hostKey)) {
       localStorage.setItem(hostKey, "true");
       isHost.current = true;
     }
+
+    // Force correct role if needed
   }, [channelId]);
 
-  // ==================== PUBNUB SETUP ====================
+  // ==================== PUBNUB ====================
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: `user-${Math.random().toString(36).substring(2)}`,
+      userId: myPlayerId.current,
     });
 
     pubnubRef.current = pubnub;
@@ -75,9 +81,12 @@ export default function PongGame({
         const data = messageEvent.message;
         if (!isPongMessage(data)) return;
 
-        if (data.type === "role" && !isHost.current) {
-          isHost.current = data.isHost;
+        if (data.type === "role") {
+          if (data.playerId !== myPlayerId.current) {
+            isHost.current = data.isHost;
+          }
         }
+
         if (data.type === "input") {
           gameStateRef.current[data.side] = data.y;
         }
@@ -90,10 +99,10 @@ export default function PongGame({
           gameRunningRef.current = false;
         }
       },
-      presence: (presenceEvent: any) => {
-        const count = presenceEvent.occupancy || 1;
-        setPlayerCount(count);
 
+      presence: (e: any) => {
+        const count = e.occupancy || 1;
+        setPlayerCount(count);
         if (count >= 2 && !gameStarted) {
           setGameStarted(true);
           gameRunningRef.current = true;
@@ -102,8 +111,8 @@ export default function PongGame({
       },
     });
 
-    // Initial presence check
-    pubnub.hereNow({ channels: [channel] }, (status, response) => {
+    // Initial check
+    pubnub.hereNow({ channels: [channel] }, (_, response) => {
       if (response?.channels?.[channel]) {
         const count = response.channels[channel].occupants?.length || 1;
         setPlayerCount(count);
@@ -115,20 +124,22 @@ export default function PongGame({
       }
     });
 
-    // Announce role after connection
+    // Announce role to everyone
     setTimeout(() => {
-      if (pubnubRef.current) {
-        pubnubRef.current.publish({
-          channel,
-          message: { type: "role", isHost: isHost.current },
-        });
-      }
-    }, 1000);
+      pubnub.publish({
+        channel,
+        message: {
+          type: "role",
+          isHost: isHost.current,
+          playerId: myPlayerId.current,
+        },
+      });
+    }, 800);
 
     return () => pubnub.unsubscribeAll();
   }, [channel]);
 
-  // ==================== CONTROLS ====================
+  // Controls
   const updatePaddle = (clientY: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -147,10 +158,10 @@ export default function PongGame({
     });
   };
 
+  // Mouse & Touch
   useEffect(() => {
-    const handleMouse = (e: MouseEvent) => updatePaddle(e.clientY);
-    window.addEventListener("mousemove", handleMouse);
-    return () => window.removeEventListener("mousemove", handleMouse);
+    window.addEventListener("mousemove", (e) => updatePaddle(e.clientY));
+    return () => window.removeEventListener("mousemove", (e) => updatePaddle(e.clientY));
   }, []);
 
   useEffect(() => {
@@ -171,7 +182,7 @@ export default function PongGame({
     };
   }, []);
 
-  // ==================== GAME LOOP ====================
+  // Game Loop (Host controls ball)
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -181,27 +192,8 @@ export default function PongGame({
         ...gameStateRef.current,
         scoreL,
         scoreR,
-        ball: {
-          x: 400,
-          y: 200,
-          vx: Math.random() > 0.5 ? 3.8 : -3.8,
-          vy: (Math.random() - 0.5) * 5,
-        },
+        ball: { x: 400, y: 200, vx: Math.random() > 0.5 ? 3.8 : -3.8, vy: (Math.random() - 0.5) * 5 },
       };
-    };
-
-    const checkGameOver = (scoreL: number, scoreR: number) => {
-      if (scoreL >= 10 || scoreR >= 10) {
-        const winSide = scoreL >= 10 ? "left" : "right";
-        setWinner(winSide);
-        gameRunningRef.current = false;
-        pubnubRef.current?.publish({
-          channel,
-          message: { type: "gameOver", winner: winSide } as PongMessage,
-        });
-        return true;
-      }
-      return false;
     };
 
     const gameLoop = (timestamp: number) => {
@@ -223,24 +215,22 @@ export default function PongGame({
         if (b.x <= 30 && b.y >= state.left - 10 && b.y <= state.left + 90) b.vx = Math.abs(b.vx) * 1.03;
         if (b.x >= 770 && b.y >= state.right - 10 && b.y <= state.right + 90) b.vx = -Math.abs(b.vx) * 1.03;
 
-        let scored = false;
-        if (b.x < 0) {
-          resetBall(state.scoreL, state.scoreR + 1);
-          scored = true;
-        }
-        if (b.x > 800) {
-          resetBall(state.scoreL + 1, state.scoreR);
-          scored = true;
-        }
+        if (b.x < 0) resetBall(state.scoreL, state.scoreR + 1);
+        if (b.x > 800) resetBall(state.scoreL + 1, state.scoreR);
 
-        if (scored) {
-          checkGameOver(gameStateRef.current.scoreL, gameStateRef.current.scoreR);
-        } else if (timestamp - lastSync > 40) {
+        if (timestamp - lastSync > 40) {
           pubnubRef.current?.publish({
             channel,
             message: { type: "state", state: gameStateRef.current } as PongMessage,
           });
           lastSync = timestamp;
+        }
+
+        if (state.scoreL >= 10 || state.scoreR >= 10) {
+          const win = state.scoreL >= 10 ? "left" : "right";
+          setWinner(win);
+          gameRunningRef.current = false;
+          pubnubRef.current?.publish({ channel, message: { type: "gameOver", winner: win } });
         }
       }
 
@@ -293,22 +283,14 @@ export default function PongGame({
   }, [winner]);
 
   const copyRoomLink = () => {
-    const url = `${window.location.origin}/pong/${channelId}`;
-    navigator.clipboard.writeText(url);
-    alert("✅ Room link copied!");
+    navigator.clipboard.writeText(`${window.location.origin}/pong/${channelId}`);
+    alert("✅ Link copied!");
   };
 
   const playAgain = () => window.location.reload();
 
   return (
-    <div style={{ 
-      minHeight: "100vh", 
-      background: "#050505", 
-      color: "white", 
-      padding: "10px", 
-      textAlign: "center",
-      touchAction: "none" 
-    }}>
+    <div style={{ minHeight: "100vh", background: "#050505", color: "white", padding: "10px", textAlign: "center", touchAction: "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", maxWidth: "820px", margin: "0 auto 10px" }}>
         <button onClick={() => router.push("/pong")} style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", color: "white" }}>
           ← Lobby
@@ -319,7 +301,7 @@ export default function PongGame({
       </div>
 
       <h1 style={{ fontSize: "3rem", margin: "10px 0" }}>PONG</h1>
-      <p>Room: <strong>{channelId}</strong> | First to 10 wins</p>
+      <p>Room: <strong>{channelId}</strong></p>
 
       <div style={{ margin: "15px 0", fontSize: "1.2rem" }}>
         🟢 Player 1 (Host - Left) vs 🔵 Player 2 (Guest - Right)
@@ -327,17 +309,17 @@ export default function PongGame({
 
       <div style={{
         display: "inline-block",
-        padding: "10px 30px",
+        padding: "12px 32px",
         backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
         borderRadius: "9999px",
-        marginBottom: "15px",
+        marginBottom: "20px",
         fontWeight: "bold",
-        fontSize: "1.15rem"
+        fontSize: "1.2rem"
       }}>
         {isHost.current ? "🟢 YOU ARE PLAYER 1 (HOST)" : "🔵 YOU ARE PLAYER 2 (GUEST)"}
       </div>
 
-      <div style={{ margin: "20px 0", fontSize: "1.3rem", fontWeight: "bold" }}>
+      <div style={{ margin: "20px 0", fontSize: "1.3rem" }}>
         {status} ({playerCount}/2)
       </div>
 
@@ -348,37 +330,16 @@ export default function PongGame({
         style={{
           border: "4px solid #444",
           borderRadius: "12px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
           maxWidth: "100%",
           height: "auto",
-          touchAction: "none",
           display: gameStarted ? "block" : "none"
         }}
       />
 
       {winner && (
-        <div style={{ marginTop: "25px" }}>
-          <button 
-            onClick={playAgain}
-            style={{
-              padding: "14px 36px",
-              fontSize: "1.3rem",
-              background: "#22c55e",
-              color: "black",
-              border: "none",
-              borderRadius: "12px",
-              fontWeight: "bold"
-            }}
-          >
-            Play Again
-          </button>
-        </div>
-      )}
-
-      {gameStarted && (
-        <p style={{ marginTop: "15px", opacity: 0.8 }}>
-          Drag / Swipe on canvas to move your paddle
-        </p>
+        <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px", fontSize: "1.3rem", background: "#22c55e", color: "black", borderRadius: "12px" }}>
+          Play Again
+        </button>
       )}
     </div>
   );
