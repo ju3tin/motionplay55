@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import PubNub from "pubnub"
 
-export default function ChannelListenerPage({
+export default function Page({
   params,
 }: {
   params: { channelId: string; userId: string }
@@ -11,15 +11,16 @@ export default function ChannelListenerPage({
   const { channelId, userId } = params
 
   const [messages, setMessages] = useState<any[]>([])
-  const [status, setStatus] = useState<string>("Connecting...")
+  const [status, setStatus] = useState("connecting")
 
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: userId, // 👈 dynamic userId from URL
+      userId: userId,
     })
 
+    // 1. Add listener FIRST
     pubnub.addListener({
       message: (event) => {
         console.log("MESSAGE:", event.message)
@@ -35,14 +36,16 @@ export default function ChannelListenerPage({
 
       status: (s) => {
         console.log("STATUS:", s)
-        if (s.category) setStatus(s.category)
+        setStatus(s.category || "unknown")
       },
     })
 
+    // 2. Subscribe
     pubnub.subscribe({
       channels: [channelId],
     })
 
+    // 3. Cleanup
     return () => {
       pubnub.unsubscribeAll()
     }
@@ -50,11 +53,19 @@ export default function ChannelListenerPage({
 
   return (
     <div style={{ padding: 20, fontFamily: "sans-serif" }}>
-      <h1>PubNub Listener</h1>
+      <h1>Live Listener</h1>
 
-      <p><b>Channel:</b> {channelId}</p>
-      <p><b>User:</b> {userId}</p>
-      <p><b>Status:</b> {status}</p>
+      <p>
+        <b>Channel:</b> {channelId}
+      </p>
+
+      <p>
+        <b>User:</b> {userId}
+      </p>
+
+      <p>
+        <b>Status:</b> {status}
+      </p>
 
       <hr />
 
