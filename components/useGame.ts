@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { pubnub } from "@/lib/pubnub";
+import { pubnub } from "@/lib/pubnub1";
 
 export function useGame(roomId: string) {
   const [state, setState] = useState<any>(null);
