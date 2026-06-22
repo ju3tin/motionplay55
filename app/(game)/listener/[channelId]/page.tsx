@@ -2,29 +2,26 @@
 
 import { useEffect, useState } from "react"
 import PubNub from "pubnub"
+import { useParams } from "next/navigation"
 
-export default function Page({
-  params,
-}: {
-  params: { channelId: string; userId: string }
-}) {
-  const { channelId, userId } = params
+export default function RoomPage() {
+  const params = useParams()
+  const channelId = params?.channelId as string
 
   const [messages, setMessages] = useState<any[]>([])
   const [status, setStatus] = useState("connecting")
 
   useEffect(() => {
+    if (!channelId) return
+
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: userId,
+      userId: "user-" + Math.random().toString(36).slice(2), // auto userId
     })
 
-    // 1. Add listener FIRST
     pubnub.addListener({
       message: (event) => {
-        console.log("MESSAGE:", event.message)
-
         setMessages((prev) => [
           {
             time: new Date().toISOString(),
@@ -35,37 +32,25 @@ export default function Page({
       },
 
       status: (s) => {
-        console.log("STATUS:", s)
         setStatus(s.category || "unknown")
       },
     })
 
-    // 2. Subscribe
     pubnub.subscribe({
       channels: [channelId],
     })
 
-    // 3. Cleanup
     return () => {
       pubnub.unsubscribeAll()
     }
-  }, [channelId, userId])
+  }, [channelId])
 
   return (
     <div style={{ padding: 20, fontFamily: "sans-serif" }}>
-      <h1>Live Listener</h1>
+      <h1>Live Room</h1>
 
-      <p>
-        <b>Channel:</b> {channelId}
-      </p>
-
-      <p>
-        <b>User:</b> {userId}
-      </p>
-
-      <p>
-        <b>Status:</b> {status}
-      </p>
+      <p><b>Channel:</b> {channelId}</p>
+      <p><b>Status:</b> {status}</p>
 
       <hr />
 
