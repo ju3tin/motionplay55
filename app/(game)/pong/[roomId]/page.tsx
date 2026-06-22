@@ -13,18 +13,35 @@ type State = {
 };
 
 export default function PongRoom() {
+  // -----------------------------
+  // ROOM ID
+  // -----------------------------
   const { roomId } = useParams<{ roomId: string }>();
-
-  const room = roomId;
-
   const channel = useMemo(() => `pong-${roomId}`, [roomId]);
 
+  // -----------------------------
+  // REFS
+  // -----------------------------
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // deterministic host (first tab to set localStorage wins)
   const isHost = useRef<boolean>(false);
 
-  const room = params.roomId;
-  const channel = `pong-${room}`;
+  useEffect(() => {
+    const key = `pong-host-${roomId}`;
+    const existing = localStorage.getItem(key);
 
+    if (!existing) {
+      localStorage.setItem(key, "host");
+      isHost.current = true;
+    } else {
+      isHost.current = false;
+    }
+  }, [roomId]);
+
+  // -----------------------------
+  // STATE
+  // -----------------------------
   const [state, setState] = useState<State>({
     ball: { x: 400, y: 200, vx: 3, vy: 2 },
     left: 150,
@@ -33,17 +50,14 @@ export default function PongRoom() {
     scoreR: 0
   });
 
-  // Decide host deterministically (first tab usually becomes host)
-  useEffect(() => {
-    isHost.current = Math.random() < 0.5;
-  }, []);
-
-  // PubNub setup
+  // -----------------------------
+  // PUBNUB SETUP
+  // -----------------------------
   useEffect(() => {
     pubnub.subscribe({ channels: [channel] });
 
-    pubnub.addListener({
-      message: (msg) => {
+    const listener = {
+      message: (msg: any) => {
         const data = msg.message;
 
         if (data.type === "input") {
@@ -58,14 +72,19 @@ export default function PongRoom() {
           setState(data.state);
         }
       }
-    });
+    };
+
+    pubnub.addListener(listener);
 
     return () => {
+      pubnub.removeListener(listener);
       pubnub.unsubscribeAll();
     };
   }, [channel]);
 
-  // Input (mouse controls paddle)
+  // -----------------------------
+  // INPUT
+  // -----------------------------
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const canvas = canvasRef.current;
@@ -96,7 +115,9 @@ export default function PongRoom() {
     return () => window.removeEventListener("mousemove", handler);
   }, [channel]);
 
-  // Game loop (HOST ONLY)
+  // -----------------------------
+  // GAME LOOP (HOST ONLY)
+  // -----------------------------
   useEffect(() => {
     let frame: number;
 
@@ -147,6 +168,9 @@ export default function PongRoom() {
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
+  // -----------------------------
+  // RESET BALL
+  // -----------------------------
   function resetBall(s: State, scoreL: number, scoreR: number): State {
     return {
       ...s,
@@ -161,6 +185,9 @@ export default function PongRoom() {
     };
   }
 
+  // -----------------------------
+  // DRAW
+  // -----------------------------
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -183,9 +210,12 @@ export default function PongRoom() {
     ctx.fillText(`${state.scoreL} : ${state.scoreR}`, 370, 30);
   }
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div style={{ textAlign: "center", color: "white", background: "#111", height: "100vh" }}>
-      <h3>Room: {room}</h3>
+      <h3>Room: {roomId}</h3>
       <p>{isHost.current ? "HOST" : "GUEST"}</p>
 
       <canvas
