@@ -17,7 +17,7 @@ export async function GET(
   try {
     const { roomId } = await params;
 
-    const channel = `game-${roomId}`;
+    const channel = `${roomId}`;
 
     const history = await serverPubNub.fetchMessages({
       channels: [channel],
