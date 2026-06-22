@@ -51,7 +51,7 @@ export default function PongGame({
 
   // ==================== ROLE FROM URL ====================
   useEffect(() => {
-    const roleParam = searchParams.get("as"); // ?as=host or ?as=guest
+    const roleParam = searchParams?.get("as"); // Safe null check
 
     if (roleParam === "host") {
       isHost.current = true;
@@ -59,7 +59,7 @@ export default function PongGame({
     } else if (roleParam === "guest") {
       isHost.current = false;
     } else {
-      // Default: First visitor becomes host
+      // Default behavior: First player becomes host
       const hostKey = `pong-host-${channelId}`;
       if (!localStorage.getItem(hostKey)) {
         localStorage.setItem(hostKey, "true");
@@ -106,8 +106,9 @@ export default function PongGame({
       },
     });
 
-    // Initial check
-    setTimeout(() => pubnub.hereNow({ channels: [channel] }), 600);
+    setTimeout(() => {
+      pubnub.hereNow({ channels: [channel] });
+    }, 500);
 
     return () => pubnub.unsubscribeAll();
   }, [channel]);
@@ -253,9 +254,9 @@ export default function PongGame({
   }, [winner]);
 
   const copyRoomLink = () => {
-    const url = `${window.location.origin}/pong/${channelId}?as=host`;
-    navigator.clipboard.writeText(url);
-    alert("✅ Host link copied! Share this with your friend (they should use ?as=guest)");
+    const hostUrl = `${window.location.origin}/pong/${channelId}?as=host`;
+    navigator.clipboard.writeText(hostUrl);
+    alert("✅ Host link copied! Share with friend (they should add ?as=guest)");
   };
 
   const playAgain = () => window.location.reload();
@@ -282,7 +283,9 @@ export default function PongGame({
         {isHost.current ? "🟢 YOU ARE PLAYER 1 (HOST - LEFT)" : "🔵 YOU ARE PLAYER 2 (GUEST - RIGHT)"}
       </div>
 
-      <p>Players: {playerCount}/2 | {gameStarted ? "Game Started" : "Waiting..."}</p>
+      <div>Players: {playerCount}/2 {gameStarted && "| Game Started"}</div>
+
+      {!gameStarted && <p>Waiting for the other player...</p>}
 
       <canvas
         ref={canvasRef}
@@ -298,7 +301,7 @@ export default function PongGame({
 
       {winner && <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px" }}>Play Again</button>}
 
-      {gameStarted && <p style={{ marginTop: "15px" }}>Move mouse or swipe to control your paddle</p>}
+      {gameStarted && <p style={{ marginTop: "15px" }}>Move mouse or swipe to control paddle</p>}
     </div>
   );
 }
