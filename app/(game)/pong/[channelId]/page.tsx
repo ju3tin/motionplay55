@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
 
 type State = {
@@ -12,79 +11,113 @@ type State = {
   scoreR: number;
 };
 
-export default function PongGame() {
-  const params = useParams<{ channelId: string } | null>();
-  const channelId = params?.channelId;
+export default function PongGame({
+  params,
+}: {
+  params: { channelId: string };
+}) {
+  const channelId = params.channelId;
+  const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef(false);
-
-  if (!channelId) return null;
-
-  const channel = useMemo(() => `pong-${channelId}`, [channelId]);
+  const pubnubRef = useRef<PubNub | null>(null);
 
   const [state, setState] = useState<State>({
     ball: { x: 400, y: 200, vx: 3, vy: 2 },
     left: 150,
     right: 150,
     scoreL: 0,
-    scoreR: 0
+    scoreR: 0,
   });
 
-  const pubnubRef = useRef<PubNub | null>(null);
+  // -----------------------------
+  // HOST ELECTION (simple but stable)
+  // -----------------------------
+  useEffect(() => {
+    const key = `pong-host-${channelId}`;
 
-  // -------------------------
-  // INIT PUBNUB
-  // -------------------------
+    if (!localStorage.getItem(key)) {
+      localStorage.setItem(key, "1");
+      isHost.current = true;
+    } else {
+      isHost.current = false;
+    }
+  }, [channelId]);
+
+  // -----------------------------
+  // PUBNUB INIT
+  // -----------------------------
   useEffect(() => {
     const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: "game-host"
+      userId: `user-${Math.random().toString(36).slice(2)}`,
     });
 
     pubnubRef.current = client;
 
     client.subscribe({ channels: [channel] });
 
-    client.addListener({
-      message: (msg) => {
+    const listener = {
+      message: (msg: any) => {
         const data = msg.message;
 
         if (data.type === "input") {
-          setState((s) => {
-            // simple split logic: first user = left, second = right
-            if (!s._users) s._users = {};
-
-            s._users[data.userId] = data.y;
-
-            const users = Object.values(s._users);
-
-            return {
-              ...s,
-              left: users[0] ?? s.left,
-              right: users[1] ?? s.right
-            };
-          });
+          setState((s) => ({
+            ...s,
+            left: data.side === "left" ? data.y : s.left,
+            right: data.side === "right" ? data.y : s.right,
+          }));
         }
 
         if (data.type === "state" && !isHost.current) {
           setState(data.state);
         }
-      }
-    });
+      },
+    };
 
-    // host election (simple)
-    isHost.current = true;
+    client.addListener(listener);
 
     return () => {
+      client.removeListener(listener);
       client.unsubscribeAll();
     };
   }, [channel]);
 
-  // -------------------------
-  // GAME LOOP
-  // -------------------------
+  // -----------------------------
+  // INPUT
+  // -----------------------------
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const clamped = Math.max(0, Math.min(320, y));
+
+      const side = isHost.current ? "left" : "right";
+
+      setState((s) => ({ ...s, [side]: clamped }));
+
+      pubnubRef.current?.publish({
+        channel,
+        message: {
+          type: "input",
+          side,
+          y: clamped,
+        },
+      });
+    };
+
+    window.addEventListener("mousemove", handler);
+    return () => window.removeEventListener("mousemove", handler);
+  }, [channel]);
+
+  // -----------------------------
+  // GAME LOOP (HOST ONLY)
+  // -----------------------------
   useEffect(() => {
     let frame: number;
 
@@ -120,10 +153,7 @@ export default function PongGame() {
 
           pubnubRef.current?.publish({
             channel,
-            message: {
-              type: "state",
-              state: newState
-            }
+            message: { type: "state", state: newState },
           });
 
           return newState;
@@ -138,6 +168,9 @@ export default function PongGame() {
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
+  // -----------------------------
+  // RESET BALL
+  // -----------------------------
   function reset(s: State, scoreL: number, scoreR: number): State {
     return {
       ...s,
@@ -147,14 +180,14 @@ export default function PongGame() {
         x: 400,
         y: 200,
         vx: Math.random() > 0.5 ? 3 : -3,
-        vy: 2
-      }
+        vy: 2,
+      },
     };
   }
 
-  // -------------------------
+  // -----------------------------
   // DRAW
-  // -------------------------
+  // -----------------------------
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -164,21 +197,41 @@ export default function PongGame() {
 
     ctx.fillStyle = "white";
 
+    // paddles
     ctx.fillRect(10, state.left, 10, 80);
     ctx.fillRect(780, state.right, 10, 80);
 
+    // ball
     ctx.beginPath();
     ctx.arc(state.ball.x, state.ball.y, 8, 0, Math.PI * 2);
     ctx.fill();
 
+    // score
     ctx.font = "20px monospace";
     ctx.fillText(`${state.scoreL} : ${state.scoreR}`, 370, 30);
   }
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
-    <div style={{ textAlign: "center", background: "#111", height: "100vh", color: "white" }}>
-      <h3>Pong Room: {channelId}</h3>
-      <canvas ref={canvasRef} width={800} height={400} style={{ background: "black" }} />
+    <div
+      style={{
+        textAlign: "center",
+        background: "#111",
+        color: "white",
+        height: "100vh",
+      }}
+    >
+      <h3>Room: {channelId}</h3>
+      <p>{isHost.current ? "HOST" : "GUEST"}</p>
+
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={400}
+        style={{ background: "black" }}
+      />
     </div>
   );
 }
