@@ -1,23 +1,47 @@
 "use client";
 
-import { use } from "react";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
 
-type Props = {
-  params: Promise<{ channelId: string }>;
+/* ---------------- TYPES ---------------- */
+
+type State = {
+  ball: { x: number; y: number; vx: number; vy: number };
+  left: number;
+  right: number;
+  scoreL: number;
+  scoreR: number;
 };
 
-export default function PongClient({ params }: Props) {
-  const { channelId } = use(params);
+type PongMessage =
+  | { type: "input"; side: "left" | "right"; y: number }
+  | { type: "state"; state: State };
 
+/* ---------------- TYPE GUARD ---------------- */
+
+function isPongMessage(msg: unknown): msg is PongMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    "type" in msg
+  );
+}
+
+/* ---------------- COMPONENT ---------------- */
+
+export default function PongClient({
+  params,
+}: {
+  params: Promise<{ channelId: string }>;
+}) {
+  const { channelId } = use(params);
   const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef(false);
   const pubnubRef = useRef<PubNub | null>(null);
 
-  const [state, setState] = useState({
+  const [state, setState] = useState<State>({
     ball: { x: 400, y: 200, vx: 3, vy: 2 },
     left: 150,
     right: 150,
@@ -25,27 +49,35 @@ export default function PongClient({ params }: Props) {
     scoreR: 0,
   });
 
+  /* ---------------- HOST SELECTION ---------------- */
+
   useEffect(() => {
     const key = `pong-host-${channelId}`;
+
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, "1");
       isHost.current = true;
     }
   }, [channelId]);
 
+  /* ---------------- PUBNUB SETUP ---------------- */
+
   useEffect(() => {
     const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: `user-${Math.random()}`,
+      userId: `user-${Math.random().toString(36).slice(2)}`,
     });
 
     pubnubRef.current = client;
+
     client.subscribe({ channels: [channel] });
 
     client.addListener({
       message: (msg) => {
-        const data = msg.message;
+        const data: unknown = msg.message;
+
+        if (!isPongMessage(data)) return;
 
         if (data.type === "input") {
           setState((s) => ({
@@ -61,8 +93,12 @@ export default function PongClient({ params }: Props) {
       },
     });
 
-    return () => client.unsubscribeAll();
+    return () => {
+      client.unsubscribeAll();
+    };
   }, [channel]);
+
+  /* ---------------- INPUT ---------------- */
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -78,13 +114,19 @@ export default function PongClient({ params }: Props) {
 
       pubnubRef.current?.publish({
         channel,
-        message: { type: "input", side, y },
+        message: {
+          type: "input",
+          side,
+          y,
+        } satisfies PongMessage,
       });
     };
 
     window.addEventListener("mousemove", handler);
     return () => window.removeEventListener("mousemove", handler);
   }, [channel]);
+
+  /* ---------------- GAME LOOP ---------------- */
 
   useEffect(() => {
     let frame: number;
@@ -112,7 +154,10 @@ export default function PongClient({ params }: Props) {
 
           pubnubRef.current?.publish({
             channel,
-            message: { type: "state", state: newState },
+            message: {
+              type: "state",
+              state: newState,
+            } satisfies PongMessage,
           });
 
           return newState;
@@ -127,7 +172,9 @@ export default function PongClient({ params }: Props) {
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
-  function reset(s: any, scoreL: number, scoreR: number) {
+  /* ---------------- RESET ---------------- */
+
+  function reset(s: State, scoreL: number, scoreR: number): State {
     return {
       ...s,
       scoreL,
@@ -141,6 +188,8 @@ export default function PongClient({ params }: Props) {
     };
   }
 
+  /* ---------------- DRAW ---------------- */
+
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -149,6 +198,7 @@ export default function PongClient({ params }: Props) {
     ctx.clearRect(0, 0, 800, 400);
 
     ctx.fillStyle = "white";
+
     ctx.fillRect(10, state.left, 10, 80);
     ctx.fillRect(780, state.right, 10, 80);
 
@@ -160,10 +210,26 @@ export default function PongClient({ params }: Props) {
     ctx.fillText(`${state.scoreL} : ${state.scoreR}`, 370, 30);
   }
 
+  /* ---------------- UI ---------------- */
+
   return (
-    <div style={{ textAlign: "center", background: "#111", color: "white", height: "100vh" }}>
+    <div
+      style={{
+        textAlign: "center",
+        background: "#111",
+        color: "white",
+        height: "100vh",
+      }}
+    >
       <h3>Room: {channelId}</h3>
-      <canvas ref={canvasRef} width={800} height={400} />
+      <p>{isHost.current ? "HOST" : "GUEST"}</p>
+
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={400}
+        style={{ background: "black" }}
+      />
     </div>
   );
 }
