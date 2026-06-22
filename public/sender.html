@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PubNub Sender</title>
+</head>
+
+<body>
+<h1>Sender</h1>
+
+<button onclick="send()">Send Message</button>
+
+<script src="https://cdn.pubnub.com/sdk/javascript/pubnub.7.3.0.min.js"></script>
+
+<script>
+const pubnub = new PubNub({
+  publishKey: "pub-c-a2b04589-4986-4d7f-a61b-7cb9b8a205cd",
+  subscribeKey: "sub-c-01167be0-7e5f-43e6-8342-7cd97053cebd",
+  userId: "sender-user"
+});
+
+const channel = "test-channel";
+
+function send() {
+  pubnub.publish({
+    channel: channel,
+    message: {
+      text: "hello from sender",
+      time: new Date().toISOString()
+    }
+  }, function(status, response) {
+    console.log(status, response);
+  });
+}
+</script>
+
+</body>
+</html>
