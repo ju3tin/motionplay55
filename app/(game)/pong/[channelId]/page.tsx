@@ -1,7 +1,9 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
+
+/* ---------------- TYPES ---------------- */
 
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
@@ -11,18 +13,33 @@ type State = {
   scoreR: number;
 };
 
+type PongMessage =
+  | {
+      type: "input";
+      side: "left" | "right";
+      y: number;
+      userId?: string;
+    }
+  | {
+      type: "state";
+      state: State;
+    };
+
+/* ---------------- PAGE ---------------- */
+
 export default function PongGame({
   params,
 }: {
-  params: Promise<{ channelId: string }>;
+  params: { channelId: string };
 }) {
-  const { channelId } = use(params);
-
+  const channelId = params.channelId;
   const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef(false);
   const pubnubRef = useRef<PubNub | null>(null);
+
+  /* ---------------- STATE ---------------- */
 
   const [state, setState] = useState<State>({
     ball: { x: 400, y: 200, vx: 3, vy: 2 },
@@ -32,16 +49,19 @@ export default function PongGame({
     scoreR: 0,
   });
 
-  // HOST (simple)
+  /* ---------------- HOST ELECTION ---------------- */
+
   useEffect(() => {
     const key = `pong-host-${channelId}`;
+
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, "1");
       isHost.current = true;
     }
   }, [channelId]);
 
-  // PUBNUB
+  /* ---------------- PUBNUB SETUP ---------------- */
+
   useEffect(() => {
     const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -55,7 +75,9 @@ export default function PongGame({
 
     client.addListener({
       message: (msg) => {
-        const data = msg.message;
+        const data = msg.message as PongMessage;
+
+        if (!data || typeof data !== "object") return;
 
         if (data.type === "input") {
           setState((s) => ({
@@ -76,7 +98,8 @@ export default function PongGame({
     };
   }, [channel]);
 
-  // INPUT
+  /* ---------------- INPUT ---------------- */
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const canvas = canvasRef.current;
@@ -91,7 +114,11 @@ export default function PongGame({
 
       pubnubRef.current?.publish({
         channel,
-        message: { type: "input", side, y },
+        message: {
+          type: "input",
+          side,
+          y,
+        } satisfies PongMessage,
       });
     };
 
@@ -99,7 +126,8 @@ export default function PongGame({
     return () => window.removeEventListener("mousemove", handler);
   }, [channel]);
 
-  // GAME LOOP
+  /* ---------------- GAME LOOP ---------------- */
+
   useEffect(() => {
     let frame: number;
 
@@ -133,7 +161,10 @@ export default function PongGame({
 
           pubnubRef.current?.publish({
             channel,
-            message: { type: "state", state: newState },
+            message: {
+              type: "state",
+              state: newState,
+            } satisfies PongMessage,
           });
 
           return newState;
@@ -147,6 +178,8 @@ export default function PongGame({
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [channel]);
+
+  /* ---------------- RESET ---------------- */
 
   function reset(s: State, scoreL: number, scoreR: number): State {
     return {
@@ -162,6 +195,8 @@ export default function PongGame({
     };
   }
 
+  /* ---------------- DRAW ---------------- */
+
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -170,6 +205,7 @@ export default function PongGame({
     ctx.clearRect(0, 0, 800, 400);
 
     ctx.fillStyle = "white";
+
     ctx.fillRect(10, state.left, 10, 80);
     ctx.fillRect(780, state.right, 10, 80);
 
@@ -181,12 +217,26 @@ export default function PongGame({
     ctx.fillText(`${state.scoreL} : ${state.scoreR}`, 370, 30);
   }
 
+  /* ---------------- UI ---------------- */
+
   return (
-    <div style={{ textAlign: "center", background: "#111", color: "white", height: "100vh" }}>
+    <div
+      style={{
+        textAlign: "center",
+        background: "#111",
+        color: "white",
+        height: "100vh",
+      }}
+    >
       <h3>Room: {channelId}</h3>
       <p>{isHost.current ? "HOST" : "GUEST"}</p>
 
-      <canvas ref={canvasRef} width={800} height={400} style={{ background: "black" }} />
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={400}
+        style={{ background: "black" }}
+      />
     </div>
   );
 }
