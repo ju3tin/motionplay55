@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { pubnub } from "@/lib/pubnub2";
+import { useParams } from "next/navigation";
 
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
