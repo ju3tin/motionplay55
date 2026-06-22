@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const channel = `game-${roomId}`;
+    const channel = `${roomId}`;
     console.log("📡 CHANNEL USED:", channel);
 
     const event = {
