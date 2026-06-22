@@ -38,6 +38,7 @@ export default function PongGame({
   const [playerCount, setPlayerCount] = useState(1);
   const [winner, setWinner] = useState<"left" | "right" | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
+  const [debugInfo, setDebugInfo] = useState("Initializing...");
 
   const gameStateRef = useRef<State>({
     ball: { x: 400, y: 200, vx: 3.5, vy: 2 },
@@ -65,9 +66,10 @@ export default function PongGame({
       }
     }
     setIsHost(hostStatus);
+    setDebugInfo(`Role set: ${hostStatus ? "Host" : "Guest"}`);
   }, [channelId, searchParams]);
 
-  // PubNub
+  // PubNub Setup
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -83,9 +85,7 @@ export default function PongGame({
         const data = e.message;
         if (!isPongMessage(data)) return;
 
-        if (data.type === "input") {
-          gameStateRef.current[data.side] = data.y;
-        }
+        if (data.type === "input") gameStateRef.current[data.side] = data.y;
         if (data.type === "state" && !isHost) {
           gameStateRef.current = { ...data.state };
           forceUpdate({});
@@ -97,33 +97,32 @@ export default function PongGame({
         if (data.type === "startGame") {
           setGameStarted(true);
           gameRunningRef.current = true;
+          setDebugInfo("Game Started via message");
         }
       },
       presence: (e: any) => {
         const count = e.occupancy || 1;
         setPlayerCount(count);
-
-        if (count >= 2 && isHost) {
-          // Host starts the game when 2 players are present
-          pubnub.publish({
-            channel,
-            message: { type: "startGame" },
-          });
-          setGameStarted(true);
-          gameRunningRef.current = true;
-        }
+        setDebugInfo(`Players: ${count}/2`);
       },
     });
 
-    // Initial check
-    setTimeout(() => {
-      pubnub.hereNow({ channels: [channel] });
-    }, 800);
+    // Force start after 4 seconds for testing
+    const forceTimer = setTimeout(() => {
+      if (!gameStarted) {
+        setGameStarted(true);
+        gameRunningRef.current = true;
+        setDebugInfo("Game forced started (debug mode)");
+      }
+    }, 4000);
 
-    return () => pubnub.unsubscribeAll();
-  }, [channel, isHost]);
+    return () => {
+      clearTimeout(forceTimer);
+      pubnub.unsubscribeAll();
+    };
+  }, [channel, isHost, gameStarted]);
 
-  // Controls
+  // Paddle Control
   const updatePaddle = (clientY: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -143,27 +142,8 @@ export default function PongGame({
   };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => updatePaddle(e.clientY);
-    window.addEventListener("mousemove", handler);
-    return () => window.removeEventListener("mousemove", handler);
-  }, [isHost]);
-
-  useEffect(() => {
-    const handler = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length > 0) updatePaddle(e.touches[0].clientY);
-    };
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.addEventListener("touchmove", handler, { passive: false });
-      canvas.addEventListener("touchstart", handler, { passive: false });
-    }
-    return () => {
-      if (canvas) {
-        canvas.removeEventListener("touchmove", handler);
-        canvas.removeEventListener("touchstart", handler);
-      }
-    };
+    window.addEventListener("mousemove", (e) => updatePaddle(e.clientY));
+    return () => window.removeEventListener("mousemove", (e) => updatePaddle(e.clientY));
   }, [isHost]);
 
   // Game Loop
@@ -266,7 +246,7 @@ export default function PongGame({
   const copyRoomLink = () => {
     const url = `${window.location.origin}/pong/${channelId}?as=host`;
     navigator.clipboard.writeText(url);
-    alert("✅ Host link copied!\nFriend should use ?as=guest");
+    alert("Host link copied!");
   };
 
   const playAgain = () => window.location.reload();
@@ -293,11 +273,9 @@ export default function PongGame({
         {isHost ? "🟢 YOU ARE PLAYER 1 (HOST - LEFT)" : "🔵 YOU ARE PLAYER 2 (GUEST - RIGHT)"}
       </div>
 
-      <div style={{ fontSize: "1.2rem", marginBottom: "10px" }}>
-        Players: {playerCount}/2
+      <div style={{ marginBottom: "10px" }}>
+        Players: {playerCount}/2 | Debug: {debugInfo}
       </div>
-
-      {!gameStarted && <p>Waiting for opponent to join...</p>}
 
       <canvas
         ref={canvasRef}
@@ -310,6 +288,8 @@ export default function PongGame({
           display: gameStarted ? "block" : "none"
         }}
       />
+
+      {!gameStarted && <p>Waiting for opponent... (Game will auto-start in 4 seconds for testing)</p>}
 
       {winner && <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px" }}>Play Again</button>}
 
