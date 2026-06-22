@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { pubnub } from "@/lib/pubnub2";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { pubnub } from "@/lib/pubnub2";
 
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
@@ -13,8 +13,12 @@ type State = {
 };
 
 export default function PongRoom() {
-  const params = useParams()
   const { roomId } = useParams<{ roomId: string }>();
+
+  const room = roomId;
+
+  const channel = useMemo(() => `pong-${roomId}`, [roomId]);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef<boolean>(false);
 
