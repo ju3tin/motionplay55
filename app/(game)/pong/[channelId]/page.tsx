@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
@@ -14,8 +14,7 @@ type State = {
 type PongMessage =
   | { type: "input"; side: "left" | "right"; y: number }
   | { type: "state"; state: State }
-  | { type: "gameOver"; winner: "left" | "right" }
-  | { type: "role"; isHost: boolean };
+  | { type: "gameOver"; winner: "left" | "right" };
 
 function isPongMessage(msg: unknown): msg is PongMessage {
   return typeof msg === "object" && msg !== null && "type" in msg;
@@ -27,8 +26,9 @@ export default function PongGame({
   params: Promise<{ channelId: string }>;
 }) {
   const { channelId } = use(params);
-  const channel = `pong-${channelId}`;
+  const searchParams = useSearchParams();
   const router = useRouter();
+  const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pubnubRef = useRef<PubNub | null>(null);
@@ -49,34 +49,26 @@ export default function PongGame({
   const gameRunningRef = useRef(false);
   const [, forceUpdate] = useState({});
 
-  // ==================== HOST DETERMINATION ====================
+  // ==================== ROLE FROM URL ====================
   useEffect(() => {
-    const hostKey = `pong-host-${channelId}`;
-    if (!localStorage.getItem(hostKey)) {
-      localStorage.setItem(hostKey, "true");
+    const roleParam = searchParams.get("as"); // ?as=host or ?as=guest
+
+    if (roleParam === "host") {
       isHost.current = true;
+      localStorage.setItem(`pong-host-${channelId}`, "true");
+    } else if (roleParam === "guest") {
+      isHost.current = false;
+    } else {
+      // Default: First visitor becomes host
+      const hostKey = `pong-host-${channelId}`;
+      if (!localStorage.getItem(hostKey)) {
+        localStorage.setItem(hostKey, "true");
+        isHost.current = true;
+      }
     }
-  }, [channelId]);
+  }, [channelId, searchParams]);
 
-  // ==================== SEND MESSAGE USING YOUR API ====================
-  const sendMessage = async (type: string, payload: any = {}) => {
-    try {
-      await fetch("https://motionplay.vercel.app/api/rooms/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomId: channelId,
-          playerId: `player-${Math.random().toString(36).substring(2)}`,
-          type,
-          ...payload,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to send message:", error);
-    }
-  };
-
-  // ==================== PUBNUB FOR RECEIVING ====================
+  // ==================== PUBNUB ====================
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -88,13 +80,10 @@ export default function PongGame({
     pubnub.subscribe({ channels: [channel] });
 
     pubnub.addListener({
-      message: (messageEvent) => {
-        const data = messageEvent.message;
+      message: (e) => {
+        const data = e.message;
         if (!isPongMessage(data)) return;
 
-        if (data.type === "role" && !isHost.current) {
-          isHost.current = data.isHost;
-        }
         if (data.type === "input") {
           gameStateRef.current[data.side] = data.y;
         }
@@ -117,18 +106,13 @@ export default function PongGame({
       },
     });
 
-    // Initial presence
-    pubnub.hereNow({ channels: [channel] });
-
-    // Send role using your API
-    setTimeout(() => {
-      sendMessage("role", { isHost: isHost.current });
-    }, 800);
+    // Initial check
+    setTimeout(() => pubnub.hereNow({ channels: [channel] }), 600);
 
     return () => pubnub.unsubscribeAll();
-  }, [channel, channelId]);
+  }, [channel]);
 
-  // Controls
+  // ==================== CONTROLS ====================
   const updatePaddle = (clientY: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -141,10 +125,12 @@ export default function PongGame({
     const side = isHost.current ? "left" : "right";
     gameStateRef.current[side] = y;
 
-    sendMessage("input", { side, y });   // Use your API
+    pubnubRef.current?.publish({
+      channel,
+      message: { type: "input", side, y } as PongMessage,
+    });
   };
 
-  // Mouse & Touch
   useEffect(() => {
     const handler = (e: MouseEvent) => updatePaddle(e.clientY);
     window.addEventListener("mousemove", handler);
@@ -154,7 +140,7 @@ export default function PongGame({
   useEffect(() => {
     const handler = (e: TouchEvent) => {
       e.preventDefault();
-      if (e.touches.length) updatePaddle(e.touches[0].clientY);
+      if (e.touches.length > 0) updatePaddle(e.touches[0].clientY);
     };
     const canvas = canvasRef.current;
     if (canvas) {
@@ -169,7 +155,7 @@ export default function PongGame({
     };
   }, []);
 
-  // Game Loop (Host only)
+  // Game Loop
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -206,7 +192,7 @@ export default function PongGame({
         if (b.x > 800) resetBall(state.scoreL + 1, state.scoreR);
 
         if (timestamp - lastSync > 40) {
-          sendMessage("state", { state: gameStateRef.current });
+          pubnubRef.current?.publish({ channel, message: { type: "state", state: gameStateRef.current } });
           lastSync = timestamp;
         }
 
@@ -214,7 +200,7 @@ export default function PongGame({
           const win = state.scoreL >= 10 ? "left" : "right";
           setWinner(win);
           gameRunningRef.current = false;
-          sendMessage("gameOver", { winner: win });
+          pubnubRef.current?.publish({ channel, message: { type: "gameOver", winner: win } });
         }
       }
 
@@ -267,17 +253,18 @@ export default function PongGame({
   }, [winner]);
 
   const copyRoomLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/pong/${channelId}`);
-    alert("✅ Room link copied!");
+    const url = `${window.location.origin}/pong/${channelId}?as=host`;
+    navigator.clipboard.writeText(url);
+    alert("✅ Host link copied! Share this with your friend (they should use ?as=guest)");
   };
 
   const playAgain = () => window.location.reload();
 
   return (
-    <div style={{ minHeight: "100vh", background: "#050505", color: "white", padding: "10px", textAlign: "center", touchAction: "none" }}>
+    <div style={{ minHeight: "100vh", background: "#050505", color: "white", padding: "20px", textAlign: "center" }}>
       <div style={{ display: "flex", justifyContent: "space-between", maxWidth: "820px", margin: "0 auto 10px" }}>
         <button onClick={() => router.push("/pong")}>← Lobby</button>
-        <button onClick={copyRoomLink}>📋 Copy Link</button>
+        <button onClick={copyRoomLink}>📋 Copy Host Link</button>
       </div>
 
       <h1 style={{ fontSize: "3rem" }}>PONG</h1>
@@ -290,14 +277,12 @@ export default function PongGame({
         borderRadius: "9999px",
         margin: "20px 0",
         fontWeight: "bold",
-        fontSize: "1.2rem"
+        fontSize: "1.25rem"
       }}>
         {isHost.current ? "🟢 YOU ARE PLAYER 1 (HOST - LEFT)" : "🔵 YOU ARE PLAYER 2 (GUEST - RIGHT)"}
       </div>
 
-      <div>Players connected: {playerCount}/2</div>
-
-      {!gameStarted && <p>Waiting for opponent to join...</p>}
+      <p>Players: {playerCount}/2 | {gameStarted ? "Game Started" : "Waiting..."}</p>
 
       <canvas
         ref={canvasRef}
@@ -311,9 +296,9 @@ export default function PongGame({
         }}
       />
 
-      {winner && <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px", fontSize: "1.2rem" }}>Play Again</button>}
+      {winner && <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px" }}>Play Again</button>}
 
-      {gameStarted && <p style={{ marginTop: "15px" }}>Drag / Move mouse to control paddle</p>}
+      {gameStarted && <p style={{ marginTop: "15px" }}>Move mouse or swipe to control your paddle</p>}
     </div>
   );
 }
