@@ -80,7 +80,7 @@ export default function PongRoom() {
       pubnub.removeListener(listener);
       pubnub.unsubscribeAll();
     };
-  }, [channel]);
+  }, [roomId]);
 
   // -----------------------------
   // INPUT
