@@ -49,7 +49,7 @@ export default function PongGame({
   const gameRunningRef = useRef(false);
   const [, forceUpdate] = useState({});
 
-  // ==================== HOST & PLAYER SETUP ====================
+  // Host Selection
   useEffect(() => {
     const hostKey = `pong-host-${channelId}`;
     if (!localStorage.getItem(hostKey)) {
@@ -58,7 +58,7 @@ export default function PongGame({
     }
   }, [channelId]);
 
-  // ==================== PUBNUB SETUP ====================
+  // PubNub Setup
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -69,7 +69,6 @@ export default function PongGame({
     pubnubRef.current = pubnub;
     pubnub.subscribe({ channels: [channel] });
 
-    // Presence (to count players)
     pubnub.addListener({
       message: (messageEvent) => {
         const data = messageEvent.message;
@@ -87,26 +86,34 @@ export default function PongGame({
           gameRunningRef.current = false;
         }
       },
-      presence: (presenceEvent) => {
-        setPlayerCount(presenceEvent.occupancy);
-        if (presenceEvent.occupancy >= 2 && !gameStarted) {
+      presence: (presenceEvent: any) => {
+        // Fixed: Use optional chaining for TypeScript compatibility
+        const occupancy = (presenceEvent as any).occupancy || playerCount;
+        setPlayerCount(occupancy);
+
+        if (occupancy >= 2 && !gameStarted) {
           setGameStarted(true);
           gameRunningRef.current = true;
         }
       },
     });
 
-    // Get current occupancy
+    // Initial player count
     pubnub.hereNow({ channels: [channel] }, (status, response) => {
-      if (response?.channels[channel]) {
-        setPlayerCount(response.channels[channel].occupants.length);
+      if (response?.channels?.[channel]) {
+        const count = response.channels[channel].occupants?.length || 1;
+        setPlayerCount(count);
+        if (count >= 2 && !gameStarted) {
+          setGameStarted(true);
+          gameRunningRef.current = true;
+        }
       }
     });
 
     return () => pubnub.unsubscribeAll();
-  }, [channel, gameStarted]);
+  }, [channel]);
 
-  // ==================== CONTROLS ====================
+  // Controls
   const updatePaddle = (clientY: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -125,7 +132,6 @@ export default function PongGame({
     });
   };
 
-  // Mouse & Touch (same as before)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => updatePaddle(e.clientY);
     window.addEventListener("mousemove", handleMouseMove);
@@ -151,7 +157,7 @@ export default function PongGame({
     };
   }, []);
 
-  // ==================== GAME LOOP ====================
+  // Game Loop (same as before)
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -176,7 +182,7 @@ export default function PongGame({
         gameRunningRef.current = false;
         pubnubRef.current?.publish({
           channel,
-          message: { type: "gameOver", winner: "left" },
+          message: { type: "gameOver", winner: "left" } as PongMessage,
         });
         return true;
       }
@@ -185,7 +191,7 @@ export default function PongGame({
         gameRunningRef.current = false;
         pubnubRef.current?.publish({
           channel,
-          message: { type: "gameOver", winner: "right" },
+          message: { type: "gameOver", winner: "right" } as PongMessage,
         });
         return true;
       }
@@ -208,8 +214,12 @@ export default function PongGame({
 
         if (b.y <= 10 || b.y >= 390) b.vy *= -1;
 
-        if (b.x <= 30 && b.y >= state.left - 10 && b.y <= state.left + 90) b.vx = Math.abs(b.vx) * 1.03;
-        if (b.x >= 770 && b.y >= state.right - 10 && b.y <= state.right + 90) b.vx = -Math.abs(b.vx) * 1.03;
+        if (b.x <= 30 && b.y >= state.left - 10 && b.y <= state.left + 90) {
+          b.vx = Math.abs(b.vx) * 1.03;
+        }
+        if (b.x >= 770 && b.y >= state.right - 10 && b.y <= state.right + 90) {
+          b.vx = -Math.abs(b.vx) * 1.03;
+        }
 
         let scored = false;
         if (b.x < 0) {
@@ -221,12 +231,12 @@ export default function PongGame({
           scored = true;
         }
 
-        if (scored && checkGameOver(gameStateRef.current.scoreL, gameStateRef.current.scoreR)) {
-          // Game over
+        if (scored) {
+          checkGameOver(gameStateRef.current.scoreL, gameStateRef.current.scoreR);
         } else if (timestamp - lastSync > 40) {
           pubnubRef.current?.publish({
             channel,
-            message: { type: "state", state: gameStateRef.current },
+            message: { type: "state", state: gameStateRef.current } as PongMessage,
           });
           lastSync = timestamp;
         }
@@ -272,7 +282,7 @@ export default function PongGame({
         ctx.fillRect(0, 0, 800, 400);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 60px monospace";
-        ctx.fillText(winner === "left" ? "HOST WINS!" : "GUEST WINS!", 400, 180);
+        ctx.fillText(winner === "left" ? "HOST (P1) WINS!" : "GUEST (P2) WINS!", 400, 180);
       }
     };
 
@@ -310,8 +320,7 @@ export default function PongGame({
       <p>Room: <strong>{channelId}</strong></p>
 
       <div style={{ margin: "15px 0", fontSize: "1.2rem" }}>
-        <span style={{ color: "#4ade80" }}>🟢 Player 1 (Host - Left)</span> vs 
-        <span style={{ color: "#60a5fa" }}> 🔵 Player 2 (Guest - Right)</span>
+        🟢 <strong>Player 1 (Host - Left)</strong> vs 🔵 <strong>Player 2 (Guest - Right)</strong>
       </div>
 
       <div style={{
@@ -329,14 +338,14 @@ export default function PongGame({
       {!gameStarted && (
         <div style={{
           margin: "30px auto",
-          padding: "20px",
+          padding: "25px",
           background: "#1a1a1a",
           borderRadius: "12px",
           maxWidth: "500px"
         }}>
-          <h2>Waiting for opponent...</h2>
-          <p>Players in room: <strong>{playerCount}/2</strong></p>
-          <p>Share the link with your friend!</p>
+          <h2>Waiting for Player 2...</h2>
+          <p>Players connected: <strong>{playerCount}/2</strong></p>
+          <p>Share the room link with your friend to start the game.</p>
         </div>
       )}
 
