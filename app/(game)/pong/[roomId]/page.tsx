@@ -13,6 +13,7 @@ type State = {
 };
 
 export default function PongRoom() {
+  const params = useParams()
   const { roomId } = useParams<{ roomId: string }>();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef<boolean>(false);
