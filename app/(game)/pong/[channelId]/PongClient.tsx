@@ -1,32 +1,23 @@
 "use client";
 
+import { use } from "react";
 import { useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
 
-/* ---------------- TYPES ---------------- */
-
-type State = {
-  ball: { x: number; y: number; vx: number; vy: number };
-  left: number;
-  right: number;
-  scoreL: number;
-  scoreR: number;
+type Props = {
+  params: Promise<{ channelId: string }>;
 };
 
-type PongMessage =
-  | { type: "input"; side: "left" | "right"; y: number }
-  | { type: "state"; state: State };
+export default function PongClient({ params }: Props) {
+  const { channelId } = use(params);
 
-/* ---------------- COMPONENT ---------------- */
-
-export default function PongClient({ channelId }: { channelId: string }) {
   const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef(false);
   const pubnubRef = useRef<PubNub | null>(null);
 
-  const [state, setState] = useState<State>({
+  const [state, setState] = useState({
     ball: { x: 400, y: 200, vx: 3, vy: 2 },
     left: 150,
     right: 150,
@@ -34,33 +25,27 @@ export default function PongClient({ channelId }: { channelId: string }) {
     scoreR: 0,
   });
 
-  /* ---------------- HOST ---------------- */
-
   useEffect(() => {
     const key = `pong-host-${channelId}`;
-
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, "1");
       isHost.current = true;
     }
   }, [channelId]);
 
-  /* ---------------- PUBNUB ---------------- */
-
   useEffect(() => {
     const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: `user-${Math.random().toString(36).slice(2)}`,
+      userId: `user-${Math.random()}`,
     });
 
     pubnubRef.current = client;
-
     client.subscribe({ channels: [channel] });
 
     client.addListener({
       message: (msg) => {
-        const data = msg.message as PongMessage;
+        const data = msg.message;
 
         if (data.type === "input") {
           setState((s) => ({
@@ -78,8 +63,6 @@ export default function PongClient({ channelId }: { channelId: string }) {
 
     return () => client.unsubscribeAll();
   }, [channel]);
-
-  /* ---------------- INPUT ---------------- */
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -102,8 +85,6 @@ export default function PongClient({ channelId }: { channelId: string }) {
     window.addEventListener("mousemove", handler);
     return () => window.removeEventListener("mousemove", handler);
   }, [channel]);
-
-  /* ---------------- GAME LOOP ---------------- */
 
   useEffect(() => {
     let frame: number;
@@ -146,7 +127,7 @@ export default function PongClient({ channelId }: { channelId: string }) {
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
-  function reset(s: State, scoreL: number, scoreR: number): State {
+  function reset(s: any, scoreL: number, scoreR: number) {
     return {
       ...s,
       scoreL,
@@ -182,9 +163,7 @@ export default function PongClient({ channelId }: { channelId: string }) {
   return (
     <div style={{ textAlign: "center", background: "#111", color: "white", height: "100vh" }}>
       <h3>Room: {channelId}</h3>
-      <p>{isHost.current ? "HOST" : "GUEST"}</p>
-
-      <canvas ref={canvasRef} width={800} height={400} style={{ background: "black" }} />
+      <canvas ref={canvasRef} width={800} height={400} />
     </div>
   );
 }
