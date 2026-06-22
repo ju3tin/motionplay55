@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PubNub Listener</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    #status {
+      margin-bottom: 10px;
+      color: blue;
+    }
+    .msg {
+      background: #f3f3f3;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>PubNub Listener (Vanilla JS)</h1>
+
+<div>
+  Channel:
+  <input id="channel" value="motion-cb526fc3-7c0" />
+  <button onclick="start()">Join</button>
+</div>
+
+<p id="status">Status: idle</p>
+
+<div id="messages"></div>
+
+<!-- PubNub CDN -->
+<script src="https://cdn.pubnub.com/sdk/javascript/pubnub.7.3.0.min.js"></script>
+
+<script>
+let pubnub;
+
+function start() {
+  const channel = document.getElementById("channel").value;
+
+  pubnub = new PubNub({
+    publishKey: "pub-c-a2b04589-4986-4d7f-a61b-7cb9b8a205cd",
+    subscribeKey: "sub-c-01167be0-7e5f-43e6-8342-7cd97053cebd",
+    userId: "web-user-" + Math.random().toString(36).slice(2)
+  });
+
+  // Listener
+  pubnub.addListener({
+    status: function(statusEvent) {
+      console.log("STATUS:", statusEvent);
+      document.getElementById("status").innerText =
+        "Status: " + statusEvent.category;
+    },
+
+    message: function(event) {
+      console.log("MESSAGE:", event.message);
+
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.innerText = JSON.stringify(event.message);
+
+      document.getElementById("messages").prepend(div);
+    }
+  });
+
+  pubnub.subscribe({
+    channels: [channel]
+  });
+}
+</script>
+
+</body>
+</html>
