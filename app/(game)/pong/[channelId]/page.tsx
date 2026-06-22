@@ -42,7 +42,7 @@ export default function PongGame({
 
   const [, forceUpdate] = useState({});
 
-  // Host Selection
+  // Host Selection - Creator is always Host (Left)
   useEffect(() => {
     const hostKey = `pong-host-${channelId}`;
     if (!localStorage.getItem(hostKey)) {
@@ -98,20 +98,16 @@ export default function PongGame({
     });
   };
 
-  // Mouse Support
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => updatePaddle(e.clientY);
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [channel]);
 
-  // Touch Support
   useEffect(() => {
     const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // Prevent scrolling
-      if (e.touches.length > 0) {
-        updatePaddle(e.touches[0].clientY);
-      }
+      e.preventDefault();
+      if (e.touches.length > 0) updatePaddle(e.touches[0].clientY);
     };
 
     const canvas = canvasRef.current;
@@ -220,7 +216,7 @@ export default function PongGame({
   const copyRoomLink = () => {
     const url = `${window.location.origin}/pong/${channelId}`;
     navigator.clipboard.writeText(url);
-    alert("✅ Room link copied!");
+    alert("✅ Room link copied! Share with your friend.");
   };
 
   return (
@@ -248,18 +244,35 @@ export default function PongGame({
         </button>
       </div>
 
-      <h1 style={{ fontSize: "2.8rem", margin: "10px 0 5px" }}>PONG</h1>
-      <p>Room: <strong>{channelId}</strong></p>
+      <h1 style={{ fontSize: "3rem", margin: "10px 0 8px" }}>PONG</h1>
+      <p style={{ fontSize: "1.3rem" }}>Room: <strong>{channelId}</strong></p>
+
+      {/* Player Labels */}
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        gap: "40px", 
+        margin: "15px 0 10px",
+        fontSize: "1.1rem",
+        fontWeight: "bold"
+      }}>
+        <div style={{ color: "#4ade80" }}>
+          🟢 HOST (Left) — Player 1
+        </div>
+        <div style={{ color: "#60a5fa" }}>
+          🔵 GUEST (Right) — Player 2
+        </div>
+      </div>
 
       <div style={{
         display: "inline-block",
-        padding: "6px 20px",
+        padding: "8px 28px",
         backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
         borderRadius: "9999px",
-        margin: "10px 0 15px",
+        marginBottom: "15px",
         fontWeight: "bold"
       }}>
-        {isHost.current ? "🟢 HOST (Left)" : "🔵 GUEST (Right)"}
+        {isHost.current ? "🟢 YOU ARE HOST (Player 1)" : "🔵 YOU ARE GUEST (Player 2)"}
       </div>
 
       <canvas
@@ -276,20 +289,12 @@ export default function PongGame({
         }}
       />
 
-      {/* Mobile Virtual Controls */}
-      <div style={{ 
-        marginTop: "15px", 
-        display: "flex", 
-        justifyContent: "center", 
-        gap: "20px",
-        fontSize: "0.9rem",
-        opacity: 0.8 
-      }}>
-        <div>⬆️ Swipe / Drag on canvas to move paddle</div>
+      <div style={{ marginTop: "20px", opacity: 0.8 }}>
+        {isHost.current ? "You control the LEFT paddle" : "You control the RIGHT paddle"}
       </div>
 
-      <p style={{ marginTop: "10px", opacity: 0.7, fontSize: "0.95rem" }}>
-        Works on mobile + desktop
+      <p style={{ marginTop: "10px", opacity: 0.7 }}>
+        Drag / Swipe on the canvas to move your paddle
       </p>
     </div>
   );
