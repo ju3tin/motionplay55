@@ -32,7 +32,11 @@ export default function PongGame({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pubnubRef = useRef<PubNub | null>(null);
-  const isHost = useRef(false);
+
+  const [isHost, setIsHost] = useState(false);        // ← Changed to state
+  const [playerCount, setPlayerCount] = useState(1);
+  const [winner, setWinner] = useState<"left" | "right" | null>(null);
+  const [gameStarted, setGameStarted] = useState(false);
 
   const gameStateRef = useRef<State>({
     ball: { x: 400, y: 200, vx: 3.5, vy: 2 },
@@ -42,30 +46,29 @@ export default function PongGame({
     scoreR: 0,
   });
 
-  const [playerCount, setPlayerCount] = useState(1);
-  const [winner, setWinner] = useState<"left" | "right" | null>(null);
-  const [gameStarted, setGameStarted] = useState(false);
-
   const gameRunningRef = useRef(false);
   const [, forceUpdate] = useState({});
 
   // ==================== ROLE FROM URL ====================
   useEffect(() => {
-    const roleParam = searchParams?.get("as"); // Safe null check
+    const roleParam = searchParams?.get("as");
+
+    let hostStatus = false;
 
     if (roleParam === "host") {
-      isHost.current = true;
-      localStorage.setItem(`pong-host-${channelId}`, "true");
+      hostStatus = true;
     } else if (roleParam === "guest") {
-      isHost.current = false;
+      hostStatus = false;
     } else {
-      // Default behavior: First player becomes host
+      // Default: First visitor is host
       const hostKey = `pong-host-${channelId}`;
       if (!localStorage.getItem(hostKey)) {
         localStorage.setItem(hostKey, "true");
-        isHost.current = true;
+        hostStatus = true;
       }
     }
+
+    setIsHost(hostStatus);
   }, [channelId, searchParams]);
 
   // ==================== PUBNUB ====================
@@ -87,7 +90,7 @@ export default function PongGame({
         if (data.type === "input") {
           gameStateRef.current[data.side] = data.y;
         }
-        if (data.type === "state" && !isHost.current) {
+        if (data.type === "state" && !isHost) {
           gameStateRef.current = { ...data.state };
           forceUpdate({});
         }
@@ -106,14 +109,12 @@ export default function PongGame({
       },
     });
 
-    setTimeout(() => {
-      pubnub.hereNow({ channels: [channel] });
-    }, 500);
+    setTimeout(() => pubnub.hereNow({ channels: [channel] }), 600);
 
     return () => pubnub.unsubscribeAll();
-  }, [channel]);
+  }, [channel, isHost, gameStarted]);
 
-  // ==================== CONTROLS ====================
+  // Controls
   const updatePaddle = (clientY: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -123,7 +124,7 @@ export default function PongGame({
     let y = clientY - rect.top;
     y = Math.max(0, Math.min(320, y));
 
-    const side = isHost.current ? "left" : "right";
+    const side = isHost ? "left" : "right";
     gameStateRef.current[side] = y;
 
     pubnubRef.current?.publish({
@@ -132,11 +133,12 @@ export default function PongGame({
     });
   };
 
+  // Mouse & Touch (same)
   useEffect(() => {
     const handler = (e: MouseEvent) => updatePaddle(e.clientY);
     window.addEventListener("mousemove", handler);
     return () => window.removeEventListener("mousemove", handler);
-  }, []);
+  }, [isHost]);
 
   useEffect(() => {
     const handler = (e: TouchEvent) => {
@@ -154,9 +156,9 @@ export default function PongGame({
         canvas.removeEventListener("touchstart", handler);
       }
     };
-  }, []);
+  }, [isHost]);
 
-  // Game Loop
+  // Game Loop (Host only)
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -180,7 +182,7 @@ export default function PongGame({
       const state = gameStateRef.current;
       const b = state.ball;
 
-      if (isHost.current) {
+      if (isHost) {
         b.x += b.vx;
         b.y += b.vy;
 
@@ -251,12 +253,12 @@ export default function PongGame({
 
     frame = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(frame);
-  }, [winner]);
+  }, [winner, isHost]);
 
   const copyRoomLink = () => {
-    const hostUrl = `${window.location.origin}/pong/${channelId}?as=host`;
-    navigator.clipboard.writeText(hostUrl);
-    alert("✅ Host link copied! Share with friend (they should add ?as=guest)");
+    const url = `${window.location.origin}/pong/${channelId}?as=host`;
+    navigator.clipboard.writeText(url);
+    alert("Host link copied! Share with friend (they should use ?as=guest)");
   };
 
   const playAgain = () => window.location.reload();
@@ -274,18 +276,18 @@ export default function PongGame({
       <div style={{
         display: "inline-block",
         padding: "12px 32px",
-        backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
+        backgroundColor: isHost ? "#166534" : "#1e3a8a",
         borderRadius: "9999px",
         margin: "20px 0",
         fontWeight: "bold",
         fontSize: "1.25rem"
       }}>
-        {isHost.current ? "🟢 YOU ARE PLAYER 1 (HOST - LEFT)" : "🔵 YOU ARE PLAYER 2 (GUEST - RIGHT)"}
+        {isHost ? "🟢 YOU ARE PLAYER 1 (HOST - LEFT)" : "🔵 YOU ARE PLAYER 2 (GUEST - RIGHT)"}
       </div>
 
       <div>Players: {playerCount}/2 {gameStarted && "| Game Started"}</div>
 
-      {!gameStarted && <p>Waiting for the other player...</p>}
+      {!gameStarted && <p>Waiting for the other player to join...</p>}
 
       <canvas
         ref={canvasRef}
