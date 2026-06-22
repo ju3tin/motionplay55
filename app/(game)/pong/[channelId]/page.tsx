@@ -1,8 +1,8 @@
 "use client";
 import { use, useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
+import { useRouter } from "next/navigation";
 
-/* ---------------- TYPES ---------------- */
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
   left: number;
@@ -15,12 +15,10 @@ type PongMessage =
   | { type: "input"; side: "left" | "right"; y: number }
   | { type: "state"; state: State };
 
-/* ---------------- TYPE GUARD ---------------- */
 function isPongMessage(msg: unknown): msg is PongMessage {
   return typeof msg === "object" && msg !== null && "type" in msg;
 }
 
-/* ---------------- MAIN COMPONENT ---------------- */
 export default function PongGame({
   params,
 }: {
@@ -28,6 +26,7 @@ export default function PongGame({
 }) {
   const { channelId } = use(params);
   const channel = `pong-${channelId}`;
+  const router = useRouter();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isHost = useRef(false);
@@ -43,7 +42,7 @@ export default function PongGame({
 
   const [, forceUpdate] = useState({});
 
-  // ==================== HOST SELECTION ====================
+  // Host Selection
   useEffect(() => {
     const hostKey = `pong-host-${channelId}`;
     if (!localStorage.getItem(hostKey)) {
@@ -52,7 +51,7 @@ export default function PongGame({
     }
   }, [channelId]);
 
-  // ==================== PUBNUB SETUP ====================
+  // PubNub
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -71,7 +70,6 @@ export default function PongGame({
         if (data.type === "input") {
           gameStateRef.current[data.side] = data.y;
         }
-
         if (data.type === "state" && !isHost.current) {
           gameStateRef.current = { ...data.state };
           forceUpdate({});
@@ -79,12 +77,10 @@ export default function PongGame({
       },
     });
 
-    return () => {
-      pubnub.unsubscribeAll();
-    };
+    return () => pubnub.unsubscribeAll();
   }, [channel]);
 
-  // ==================== MOUSE INPUT ====================
+  // Mouse Control
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const canvas = canvasRef.current;
@@ -92,7 +88,7 @@ export default function PongGame({
 
       const rect = canvas.getBoundingClientRect();
       let y = e.clientY - rect.top;
-      y = Math.max(0, Math.min(320, y)); // 400 - 80 paddle height
+      y = Math.max(0, Math.min(320, y));
 
       const side = isHost.current ? "left" : "right";
       gameStateRef.current[side] = y;
@@ -107,7 +103,7 @@ export default function PongGame({
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [channel]);
 
-  // ==================== GAME LOOP ====================
+  // Game Loop
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -131,14 +127,11 @@ export default function PongGame({
       const b = state.ball;
 
       if (isHost.current) {
-        // Ball movement
         b.x += b.vx;
         b.y += b.vy;
 
-        // Top / Bottom wall bounce
         if (b.y <= 10 || b.y >= 390) b.vy *= -1;
 
-        // Paddle collision
         if (b.x <= 30 && b.y >= state.left - 10 && b.y <= state.left + 90) {
           b.vx = Math.abs(b.vx) * 1.03;
         }
@@ -146,11 +139,9 @@ export default function PongGame({
           b.vx = -Math.abs(b.vx) * 1.03;
         }
 
-        // Scoring
         if (b.x < 0) resetBall(state.scoreL, state.scoreR + 1);
         if (b.x > 800) resetBall(state.scoreL + 1, state.scoreR);
 
-        // Sync state to other player
         if (timestamp - lastSync > 40) {
           pubnubRef.current?.publish({
             channel,
@@ -171,25 +162,19 @@ export default function PongGame({
       if (!ctx) return;
 
       const s = gameStateRef.current;
-
       ctx.clearRect(0, 0, 800, 400);
 
-      // Background
       ctx.fillStyle = "#000011";
       ctx.fillRect(0, 0, 800, 400);
 
-      // Paddles
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(15, s.left, 12, 80);
       ctx.fillRect(773, s.right, 12, 80);
 
-      // Ball
-      ctx.fillStyle = "#ffffff";
       ctx.beginPath();
       ctx.arc(s.ball.x, s.ball.y, 9, 0, Math.PI * 2);
       ctx.fill();
 
-      // Center line
       ctx.strokeStyle = "#334455";
       ctx.setLineDash([12, 8]);
       ctx.beginPath();
@@ -198,47 +183,51 @@ export default function PongGame({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Score
-      ctx.fillStyle = "#ffffff";
       ctx.font = "bold 52px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`${s.scoreL} : ${s.scoreR}`, 400, 75);
     };
 
     frame = requestAnimationFrame(gameLoop);
-
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
-  // ==================== RENDER ====================
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#050505",
-        color: "white",
-        textAlign: "center",
-        padding: "20px",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <h1 style={{ fontSize: "3rem", margin: "10px 0 5px" }}>PONG</h1>
-      <p style={{ fontSize: "1.3rem", marginBottom: "10px" }}>
-        Room: <strong>{channelId}</strong>
-      </p>
+  const copyRoomLink = () => {
+    const url = `${window.location.origin}/pong/${channelId}`;
+    navigator.clipboard.writeText(url);
+    alert("✅ Room link copied!");
+  };
 
-      <div
-        style={{
-          display: "inline-block",
-          padding: "8px 24px",
-          backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
-          borderRadius: "9999px",
-          marginBottom: "20px",
-          fontWeight: "bold",
-          fontSize: "1.1rem",
-        }}
-      >
-        {isHost.current ? "🟢 YOU ARE THE HOST" : "🔵 YOU ARE THE GUEST"}
+  return (
+    <div style={{ minHeight: "100vh", background: "#050505", color: "white", padding: "20px", textAlign: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", maxWidth: "820px", margin: "0 auto 10px" }}>
+        <button
+          onClick={() => router.push("/pong")}
+          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", cursor: "pointer" }}
+        >
+          ← Back to Lobby
+        </button>
+
+        <button
+          onClick={copyRoomLink}
+          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", cursor: "pointer" }}
+        >
+          📋 Copy Link
+        </button>
+      </div>
+
+      <h1 style={{ fontSize: "3rem", marginBottom: "5px" }}>PONG</h1>
+      <p>Room: <strong>{channelId}</strong></p>
+
+      <div style={{
+        display: "inline-block",
+        padding: "8px 24px",
+        backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
+        borderRadius: "9999px",
+        margin: "15px 0 20px",
+        fontWeight: "bold"
+      }}>
+        {isHost.current ? "🟢 YOU ARE HOST" : "🔵 YOU ARE GUEST"}
       </div>
 
       <canvas
@@ -249,12 +238,11 @@ export default function PongGame({
           border: "4px solid #444",
           borderRadius: "12px",
           boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
-          imageRendering: "pixelated",
         }}
       />
 
       <p style={{ marginTop: "20px", opacity: 0.7 }}>
-        Move your mouse up and down to control your paddle
+        Move your mouse up/down to control the paddle
       </p>
     </div>
   );
