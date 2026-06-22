@@ -11,7 +11,8 @@ type State = {
   scoreR: number;
 };
 
-export default function PongRoom({ params }: { params: { roomId: string } }) {
+export default function PongRoom() {
+  const { roomId } = useParams<{ roomId: string }>();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isHost = useRef<boolean>(false);
 
