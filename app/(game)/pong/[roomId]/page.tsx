@@ -16,8 +16,8 @@ export default function PongRoom() {
   // -----------------------------
   // ROOM ID
   // -----------------------------
-  const { roomId } = useParams<{ roomId: string }>();
-  const channel = useMemo(() => `pong-${roomId}`, [roomId]);
+  const params = useParams()
+  const roomId = params?.roomId as string
 
   // -----------------------------
   // REFS
