@@ -54,7 +54,7 @@ export default function PongRoom() {
   // PUBNUB SETUP
   // -----------------------------
   useEffect(() => {
-    pubnub.subscribe({ channels: [channel] });
+    pubnub.subscribe({ channels: [roomId] });
 
     const listener = {
       message: (msg: any) => {
