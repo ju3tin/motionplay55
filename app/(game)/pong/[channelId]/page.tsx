@@ -51,7 +51,7 @@ export default function PongGame({
     }
   }, [channelId]);
 
-  // PubNub
+  // PubNub Setup
   useEffect(() => {
     const pubnub = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -80,30 +80,55 @@ export default function PongGame({
     return () => pubnub.unsubscribeAll();
   }, [channel]);
 
-  // Mouse Control
+  // ==================== CONTROLS (Mouse + Touch) ====================
+  const updatePaddle = (clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    let y = clientY - rect.top;
+    y = Math.max(0, Math.min(320, y));
+
+    const side = isHost.current ? "left" : "right";
+    gameStateRef.current[side] = y;
+
+    pubnubRef.current?.publish({
+      channel,
+      message: { type: "input", side, y } as PongMessage,
+    });
+  };
+
+  // Mouse Support
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      let y = e.clientY - rect.top;
-      y = Math.max(0, Math.min(320, y));
-
-      const side = isHost.current ? "left" : "right";
-      gameStateRef.current[side] = y;
-
-      pubnubRef.current?.publish({
-        channel,
-        message: { type: "input", side, y } as PongMessage,
-      });
-    };
-
+    const handleMouseMove = (e: MouseEvent) => updatePaddle(e.clientY);
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [channel]);
 
-  // Game Loop
+  // Touch Support
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault(); // Prevent scrolling
+      if (e.touches.length > 0) {
+        updatePaddle(e.touches[0].clientY);
+      }
+    };
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+      canvas.addEventListener("touchstart", handleTouchMove, { passive: false });
+    }
+
+    return () => {
+      if (canvas) {
+        canvas.removeEventListener("touchmove", handleTouchMove);
+        canvas.removeEventListener("touchstart", handleTouchMove);
+      }
+    };
+  }, [channel]);
+
+  // ==================== GAME LOOP ====================
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -199,35 +224,42 @@ export default function PongGame({
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#050505", color: "white", padding: "20px", textAlign: "center" }}>
+    <div style={{ 
+      minHeight: "100vh", 
+      background: "#050505", 
+      color: "white", 
+      padding: "10px", 
+      textAlign: "center",
+      touchAction: "none" 
+    }}>
       <div style={{ display: "flex", justifyContent: "space-between", maxWidth: "820px", margin: "0 auto 10px" }}>
         <button
           onClick={() => router.push("/pong")}
-          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", cursor: "pointer" }}
+          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", color: "white", cursor: "pointer" }}
         >
-          ← Back to Lobby
+          ← Lobby
         </button>
 
         <button
           onClick={copyRoomLink}
-          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", cursor: "pointer" }}
+          style={{ padding: "8px 16px", background: "#444", border: "none", borderRadius: "8px", color: "white", cursor: "pointer" }}
         >
           📋 Copy Link
         </button>
       </div>
 
-      <h1 style={{ fontSize: "3rem", marginBottom: "5px" }}>PONG</h1>
+      <h1 style={{ fontSize: "2.8rem", margin: "10px 0 5px" }}>PONG</h1>
       <p>Room: <strong>{channelId}</strong></p>
 
       <div style={{
         display: "inline-block",
-        padding: "8px 24px",
+        padding: "6px 20px",
         backgroundColor: isHost.current ? "#166534" : "#1e3a8a",
         borderRadius: "9999px",
-        margin: "15px 0 20px",
+        margin: "10px 0 15px",
         fontWeight: "bold"
       }}>
-        {isHost.current ? "🟢 YOU ARE HOST" : "🔵 YOU ARE GUEST"}
+        {isHost.current ? "🟢 HOST (Left)" : "🔵 GUEST (Right)"}
       </div>
 
       <canvas
@@ -238,11 +270,26 @@ export default function PongGame({
           border: "4px solid #444",
           borderRadius: "12px",
           boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+          maxWidth: "100%",
+          height: "auto",
+          touchAction: "none",
         }}
       />
 
-      <p style={{ marginTop: "20px", opacity: 0.7 }}>
-        Move your mouse up/down to control the paddle
+      {/* Mobile Virtual Controls */}
+      <div style={{ 
+        marginTop: "15px", 
+        display: "flex", 
+        justifyContent: "center", 
+        gap: "20px",
+        fontSize: "0.9rem",
+        opacity: 0.8 
+      }}>
+        <div>⬆️ Swipe / Drag on canvas to move paddle</div>
+      </div>
+
+      <p style={{ marginTop: "10px", opacity: 0.7, fontSize: "0.95rem" }}>
+        Works on mobile + desktop
       </p>
     </div>
   );
