@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { pubnub } from "@/lib/pubnub";
+import { pubnub } from "@/lib/pubnub1";
 
 export function useGameChannel(roomId: string, token?: string) {
   const [gameState, setGameState] = useState<any>(null);
