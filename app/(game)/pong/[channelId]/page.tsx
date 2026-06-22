@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import PubNub from "pubnub";
 
 type State = {
@@ -14,9 +14,10 @@ type State = {
 export default function PongGame({
   params,
 }: {
-  params: { channelId: string };
+  params: Promise<{ channelId: string }>;
 }) {
-  const channelId = params.channelId;
+  const { channelId } = use(params);
+
   const channel = `pong-${channelId}`;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -31,23 +32,16 @@ export default function PongGame({
     scoreR: 0,
   });
 
-  // -----------------------------
-  // HOST ELECTION (simple but stable)
-  // -----------------------------
+  // HOST (simple)
   useEffect(() => {
     const key = `pong-host-${channelId}`;
-
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, "1");
       isHost.current = true;
-    } else {
-      isHost.current = false;
     }
   }, [channelId]);
 
-  // -----------------------------
-  // PUBNUB INIT
-  // -----------------------------
+  // PUBNUB
   useEffect(() => {
     const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
@@ -59,8 +53,8 @@ export default function PongGame({
 
     client.subscribe({ channels: [channel] });
 
-    const listener = {
-      message: (msg: any) => {
+    client.addListener({
+      message: (msg) => {
         const data = msg.message;
 
         if (data.type === "input") {
@@ -75,39 +69,29 @@ export default function PongGame({
           setState(data.state);
         }
       },
-    };
-
-    client.addListener(listener);
+    });
 
     return () => {
-      client.removeListener(listener);
       client.unsubscribeAll();
     };
   }, [channel]);
 
-  // -----------------------------
   // INPUT
-  // -----------------------------
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const y = e.clientY - rect.top;
-      const clamped = Math.max(0, Math.min(320, y));
+      const y = Math.max(0, Math.min(320, e.clientY - rect.top));
 
       const side = isHost.current ? "left" : "right";
 
-      setState((s) => ({ ...s, [side]: clamped }));
+      setState((s) => ({ ...s, [side]: y }));
 
       pubnubRef.current?.publish({
         channel,
-        message: {
-          type: "input",
-          side,
-          y: clamped,
-        },
+        message: { type: "input", side, y },
       });
     };
 
@@ -115,9 +99,7 @@ export default function PongGame({
     return () => window.removeEventListener("mousemove", handler);
   }, [channel]);
 
-  // -----------------------------
-  // GAME LOOP (HOST ONLY)
-  // -----------------------------
+  // GAME LOOP
   useEffect(() => {
     let frame: number;
 
@@ -129,10 +111,8 @@ export default function PongGame({
           b.x += b.vx;
           b.y += b.vy;
 
-          // walls
           if (b.y <= 0 || b.y >= 400) b.vy *= -1;
 
-          // paddles
           if (b.x < 20 && b.y > s.left && b.y < s.left + 80) b.vx *= -1;
           if (b.x > 780 && b.y > s.right && b.y < s.right + 80) b.vx *= -1;
 
@@ -168,9 +148,6 @@ export default function PongGame({
     return () => cancelAnimationFrame(frame);
   }, [channel]);
 
-  // -----------------------------
-  // RESET BALL
-  // -----------------------------
   function reset(s: State, scoreL: number, scoreR: number): State {
     return {
       ...s,
@@ -185,9 +162,6 @@ export default function PongGame({
     };
   }
 
-  // -----------------------------
-  // DRAW
-  // -----------------------------
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -196,42 +170,23 @@ export default function PongGame({
     ctx.clearRect(0, 0, 800, 400);
 
     ctx.fillStyle = "white";
-
-    // paddles
     ctx.fillRect(10, state.left, 10, 80);
     ctx.fillRect(780, state.right, 10, 80);
 
-    // ball
     ctx.beginPath();
     ctx.arc(state.ball.x, state.ball.y, 8, 0, Math.PI * 2);
     ctx.fill();
 
-    // score
     ctx.font = "20px monospace";
     ctx.fillText(`${state.scoreL} : ${state.scoreR}`, 370, 30);
   }
 
-  // -----------------------------
-  // UI
-  // -----------------------------
   return (
-    <div
-      style={{
-        textAlign: "center",
-        background: "#111",
-        color: "white",
-        height: "100vh",
-      }}
-    >
+    <div style={{ textAlign: "center", background: "#111", color: "white", height: "100vh" }}>
       <h3>Room: {channelId}</h3>
       <p>{isHost.current ? "HOST" : "GUEST"}</p>
 
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={400}
-        style={{ background: "black" }}
-      />
+      <canvas ref={canvasRef} width={800} height={400} style={{ background: "black" }} />
     </div>
   );
 }
