@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 type State = {
   ball: { x: number; y: number; vx: number; vy: number };
-  top: number;     // Top paddle X position
-  bottom: number;  // Bottom paddle X position
+  top: number;
+  bottom: number;
   scoreT: number;
   scoreB: number;
 };
@@ -34,10 +34,9 @@ export default function VerticalPong({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pubnubRef = useRef<PubNub | null>(null);
 
-  const [isHost, setIsHost] = useState(false); // Host = Top Player
-  const [playerCount, setPlayerCount] = useState(1);
-  const [winner, setWinner] = useState<"top" | "bottom" | null>(null);
+  const [isHost, setIsHost] = useState(false); // Host = Top
   const [gameStarted, setGameStarted] = useState(false);
+  const [winner, setWinner] = useState<"top" | "bottom" | null>(null);
 
   const gameStateRef = useRef<State>({
     ball: { x: 400, y: 300, vx: 4, vy: 5 },
@@ -48,12 +47,11 @@ export default function VerticalPong({
   });
 
   const gameRunningRef = useRef(false);
-  const [, forceUpdate] = useState({});
 
-  // Role from URL
+  // Role
   useEffect(() => {
-    const roleParam = searchParams?.get("as");
-    setIsHost(roleParam === "host" || !roleParam);
+    const role = searchParams?.get("as");
+    setIsHost(role === "host");
   }, [searchParams]);
 
   // PubNub
@@ -77,7 +75,6 @@ export default function VerticalPong({
         }
         if (data.type === "state" && !isHost) {
           gameStateRef.current = { ...data.state };
-          forceUpdate({});
         }
         if (data.type === "gameOver") {
           setWinner(data.winner);
@@ -88,23 +85,21 @@ export default function VerticalPong({
           gameRunningRef.current = true;
         }
       },
-      presence: (e: any) => {
-        const count = e.occupancy || 1;
-        setPlayerCount(count);
-        if (count >= 2 && isHost) {
-          pubnub.publish({ channel, message: { type: "startGame" } });
-          setGameStarted(true);
-          gameRunningRef.current = true;
-        }
-      },
     });
 
-    setTimeout(() => pubnub.hereNow({ channels: [channel] }), 800);
+    // Auto start after 3 seconds
+    const timer = setTimeout(() => {
+      setGameStarted(true);
+      gameRunningRef.current = true;
+    }, 3000);
 
-    return () => pubnub.unsubscribeAll();
+    return () => {
+      clearTimeout(timer);
+      pubnub.unsubscribeAll();
+    };
   }, [channel, isHost]);
 
-  // Mouse / Touch Control (X position for horizontal paddles)
+  // Controls - Mouse X for paddle position
   const updatePaddle = (clientX: number) => {
     if (!gameRunningRef.current) return;
     const canvas = canvasRef.current;
@@ -112,7 +107,7 @@ export default function VerticalPong({
 
     const rect = canvas.getBoundingClientRect();
     let x = clientX - rect.left;
-    x = Math.max(60, Math.min(740, x)); // Keep paddle inside bounds
+    x = Math.max(60, Math.min(740, x));
 
     const side = isHost ? "top" : "bottom";
     gameStateRef.current[side] = x;
@@ -124,79 +119,40 @@ export default function VerticalPong({
   };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => updatePaddle(e.clientX);
-    window.addEventListener("mousemove", handler);
-    return () => window.removeEventListener("mousemove", handler);
-  }, [isHost]);
-
-  useEffect(() => {
-    const handler = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length > 0) updatePaddle(e.touches[0].clientX);
-    };
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.addEventListener("touchmove", handler, { passive: false });
-      canvas.addEventListener("touchstart", handler, { passive: false });
-    }
-    return () => {
-      if (canvas) {
-        canvas.removeEventListener("touchmove", handler);
-        canvas.removeEventListener("touchstart", handler);
-      }
-    };
+    window.addEventListener("mousemove", (e) => updatePaddle(e.clientX));
+    return () => window.removeEventListener("mousemove", (e) => updatePaddle(e.clientX));
   }, [isHost]);
 
   // Game Loop
   useEffect(() => {
     let frame: number;
-    let lastSync = 0;
 
     const resetBall = (scoreT: number, scoreB: number) => {
       gameStateRef.current = {
         ...gameStateRef.current,
         scoreT,
         scoreB,
-        ball: { x: 400, y: 300, vx: (Math.random() - 0.5) * 6, vy: isHost ? 5 : -5 },
+        ball: { x: 400, y: 300, vx: (Math.random() - 0.5) * 8, vy: isHost ? 6 : -6 },
       };
     };
 
-    const gameLoop = (timestamp: number) => {
-      if (!gameRunningRef.current) {
-        draw();
-        frame = requestAnimationFrame(gameLoop);
-        return;
-      }
-
+    const gameLoop = () => {
       const state = gameStateRef.current;
       const b = state.ball;
 
-      if (isHost) {
+      if (isHost && gameRunningRef.current) {
         b.x += b.vx;
         b.y += b.vy;
 
-        // Wall bounce (left/right)
         if (b.x <= 20 || b.x >= 780) b.vx *= -1;
 
-        // Paddle collision
-        if (b.y <= 50 && b.x > state.top - 60 && b.x < state.top + 60) b.vy *= -1.03;
-        if (b.y >= 550 && b.x > state.bottom - 60 && b.x < state.bottom + 60) b.vy *= -1.03;
+        // Paddle hit
+        if (b.y <= 50 && Math.abs(b.x - state.top) < 70) b.vy *= -1.05;
+        if (b.y >= 550 && Math.abs(b.x - state.bottom) < 70) b.vy *= -1.05;
 
-        // Scoring
+        // Score
         if (b.y < 0) resetBall(state.scoreT, state.scoreB + 1);
         if (b.y > 600) resetBall(state.scoreT + 1, state.scoreB);
-
-        if (timestamp - lastSync > 40) {
-          pubnubRef.current?.publish({ channel, message: { type: "state", state: gameStateRef.current } });
-          lastSync = timestamp;
-        }
-
-        if (state.scoreT >= 10 || state.scoreB >= 10) {
-          const win = state.scoreT >= 10 ? "top" : "bottom";
-          setWinner(win);
-          gameRunningRef.current = false;
-          pubnubRef.current?.publish({ channel, message: { type: "gameOver", winner: win } });
-        }
       }
 
       draw();
@@ -212,40 +168,32 @@ export default function VerticalPong({
       const s = gameStateRef.current;
       ctx.clearRect(0, 0, 800, 600);
 
-      ctx.fillStyle = "#000011";
+      // Background
+      ctx.fillStyle = "#05050f";
       ctx.fillRect(0, 0, 800, 600);
 
-      // Paddles (horizontal)
+      // Paddles
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(s.top - 60, 30, 120, 16);     // Top paddle
-      ctx.fillRect(s.bottom - 60, 554, 120, 16); // Bottom paddle
+      ctx.fillRect(s.top - 60, 25, 120, 18);     // Top
+      ctx.fillRect(s.bottom - 60, 557, 120, 18); // Bottom
 
       // Ball
       ctx.beginPath();
-      ctx.arc(s.ball.x, s.ball.y, 10, 0, Math.PI * 2);
+      ctx.arc(s.ball.x, s.ball.y, 11, 0, Math.PI * 2);
       ctx.fill();
 
-      // Center line
-      ctx.strokeStyle = "#334455";
-      ctx.setLineDash([20, 10]);
-      ctx.beginPath();
-      ctx.moveTo(0, 300);
-      ctx.lineTo(800, 300);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
       // Score
-      ctx.font = "bold 48px monospace";
+      ctx.font = "bold 60px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(s.scoreT.toString(), 400, 100);
+      ctx.fillText(s.scoreT.toString(), 400, 120);
       ctx.fillText(s.scoreB.toString(), 400, 520);
 
       if (winner) {
-        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillStyle = "rgba(0,0,0,0.9)";
         ctx.fillRect(0, 0, 800, 600);
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 60px monospace";
-        ctx.fillText(winner === "top" ? "TOP PLAYER WINS!" : "BOTTOM PLAYER WINS!", 400, 280);
+        ctx.font = "bold 70px monospace";
+        ctx.fillText(winner === "top" ? "TOP WINS!" : "BOTTOM WINS!", 400, 300);
       }
     };
 
@@ -255,21 +203,19 @@ export default function VerticalPong({
 
   return (
     <div style={{ 
-      minHeight: "100vh", 
+      height: "100vh", 
+      width: "100vw", 
       background: "#000", 
-      color: "white", 
       overflow: "hidden",
       position: "relative"
     }}>
-      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 10 }}>
-        <button onClick={() => router.push("/pong")}>← Lobby</button>
+      <div style={{ position: "absolute", top: 15, left: 15, zIndex: 100, color: "white" }}>
+        <button onClick={() => router.push("/pong")} style={{ padding: "8px 16px" }}>← Lobby</button>
       </div>
 
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10, textAlign: "right" }}>
-        <div>Room: {channelId}</div>
-        <div style={{ color: isHost ? "#4ade80" : "#60a5fa", fontWeight: "bold" }}>
-          {isHost ? "🟢 TOP PLAYER (Host)" : "🔵 BOTTOM PLAYER (Guest)"}
-        </div>
+      <div style={{ position: "absolute", top: 15, right: 15, zIndex: 100, textAlign: "right", color: "white" }}>
+        Room: {channelId}<br />
+        {isHost ? "🟢 TOP (Host)" : "🔵 BOTTOM (Guest)"}
       </div>
 
       <canvas
@@ -278,17 +224,16 @@ export default function VerticalPong({
         height={600}
         style={{
           display: "block",
-          margin: "0 auto",
-          maxWidth: "100vw",
-          maxHeight: "100vh",
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
           background: "#000"
         }}
       />
 
       {!gameStarted && (
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" }}>
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white" }}>
           <h2>Waiting for opponent...</h2>
-          <p>Players: {playerCount}/2</p>
         </div>
       )}
     </div>
