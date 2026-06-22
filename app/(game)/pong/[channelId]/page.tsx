@@ -3,7 +3,7 @@ import PongClient from "./PongClient";
 export default function Page({
   params,
 }: {
-  params: { channelId: string };
+  params: Promise<{ channelId: string }>;
 }) {
-  return <PongClient channelId={params.channelId} />;
+  return <PongClient params={params} />;
 }
