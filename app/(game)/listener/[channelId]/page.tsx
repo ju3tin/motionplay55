@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import PubNub from "pubnub1"
+import PubNub from "pubnub"
 import { useParams } from "next/navigation"
 
 export default function RoomPage() {
