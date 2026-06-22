@@ -38,7 +38,7 @@ export default function PongGame({
   const [playerCount, setPlayerCount] = useState(1);
   const [winner, setWinner] = useState<"left" | "right" | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
-  const [debugLogs, setDebugLogs] = useState<string[]>(["Game component mounted"]);
+  const [debugLogs, setDebugLogs] = useState<string[]>(["Component mounted"]);
 
   const gameStateRef = useRef<State>({
     ball: { x: 400, y: 200, vx: 3.5, vy: 2 },
@@ -51,38 +51,40 @@ export default function PongGame({
   const gameRunningRef = useRef(false);
 
   const addLog = (msg: string) => {
-    console.log(`[PONG] ${msg}`);
-    setDebugLogs(prev => [...prev.slice(-15), msg]); // keep last 15 logs
+    const logMsg = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    console.log(logMsg);
+    setDebugLogs(prev => [...prev.slice(-20), logMsg]);
   };
 
-  // ==================== ROLE SETUP ====================
+  // Role from URL
   useEffect(() => {
     const roleParam = searchParams?.get("as");
-    addLog(`URL role param: ${roleParam || "none"}`);
+    addLog(`URL param 'as' = ${roleParam || "none"}`);
 
     let hostStatus = false;
 
     if (roleParam === "host") {
       hostStatus = true;
-      addLog("Role set to HOST from URL");
+      addLog("ROLE: Set as HOST from URL");
     } else if (roleParam === "guest") {
       hostStatus = false;
-      addLog("Role set to GUEST from URL");
+      addLog("ROLE: Set as GUEST from URL");
     } else {
       const hostKey = `pong-host-${channelId}`;
       if (!localStorage.getItem(hostKey)) {
         localStorage.setItem(hostKey, "true");
         hostStatus = true;
-        addLog("Became HOST (first visitor)");
+        addLog("ROLE: Became HOST (first player)");
       } else {
-        addLog("Became GUEST (host already exists)");
+        hostStatus = false;
+        addLog("ROLE: Became GUEST");
       }
     }
 
     setIsHost(hostStatus);
   }, [channelId, searchParams]);
 
-  // ==================== PUBNUB SETUP ====================
+  // PubNub
   useEffect(() => {
     addLog("PubNub initializing...");
 
@@ -97,9 +99,16 @@ export default function PongGame({
 
     pubnub.addListener({
       message: (e) => {
-        const data = e.message;
-        addLog(`Received message: ${data.type}`);
-        if (!isPongMessage(data)) return;
+        const raw = e.message;
+        addLog(`Raw message received: ${typeof raw} - ${JSON.stringify(raw).slice(0, 100)}`);
+
+        if (!isPongMessage(raw)) {
+          addLog("Message type guard failed");
+          return;
+        }
+
+        const data = raw;
+        addLog(`Valid message: ${data.type}`);
 
         if (data.type === "input") {
           gameStateRef.current[data.side] = data.y;
@@ -110,7 +119,7 @@ export default function PongGame({
         if (data.type === "gameOver") {
           setWinner(data.winner);
           gameRunningRef.current = false;
-          addLog(`Game Over! Winner: ${data.winner}`);
+          addLog(`Game Over - Winner: ${data.winner}`);
         }
         if (data.type === "startGame") {
           setGameStarted(true);
@@ -121,29 +130,29 @@ export default function PongGame({
       presence: (e: any) => {
         const count = e.occupancy || 1;
         setPlayerCount(count);
-        addLog(`Presence update: ${count} players`);
+        addLog(`Presence: ${count} players in room`);
       },
     });
 
     // Initial checks
     setTimeout(() => {
       pubnub.hereNow({ channels: [channel] });
-      addLog("Requested hereNow");
+      addLog("Called hereNow");
     }, 800);
 
-    // Force start as fallback
-    const forceStart = setTimeout(() => {
+    // Force start fallback
+    const forceTimer = setTimeout(() => {
       if (!gameStarted) {
         setGameStarted(true);
         gameRunningRef.current = true;
-        addLog("FORCE STARTED (fallback timer)");
+        addLog("FORCE START ACTIVATED (5s fallback)");
       }
     }, 5000);
 
     return () => {
-      clearTimeout(forceStart);
+      clearTimeout(forceTimer);
       pubnub.unsubscribeAll();
-      addLog("PubNub cleaned up");
+      addLog("PubNub unsubscribed");
     };
   }, [channel, isHost, gameStarted]);
 
@@ -172,7 +181,7 @@ export default function PongGame({
     return () => window.removeEventListener("mousemove", handler);
   }, [isHost]);
 
-  // Game Loop
+  // Game Loop + Draw (same as before)
   useEffect(() => {
     let frame: number;
     let lastSync = 0;
@@ -284,40 +293,36 @@ export default function PongGame({
         <button onClick={copyRoomLink}>📋 Copy Host Link</button>
       </div>
 
-      <h1 style={{ fontSize: "3rem" }}>PONG - DEBUG MODE</h1>
+      <h1>PONG - DEBUG MODE</h1>
       <p>Room: <strong>{channelId}</strong></p>
 
       <div style={{
-        display: "inline-block",
         padding: "12px 32px",
         backgroundColor: isHost ? "#166534" : "#1e3a8a",
         borderRadius: "9999px",
         margin: "15px 0",
-        fontWeight: "bold",
-        fontSize: "1.2rem"
+        fontWeight: "bold"
       }}>
-        {isHost ? "🟢 YOU ARE PLAYER 1 (HOST)" : "🔵 YOU ARE PLAYER 2 (GUEST)"}
+        {isHost ? "🟢 PLAYER 1 (HOST)" : "🔵 PLAYER 2 (GUEST)"}
       </div>
 
-      <div style={{ marginBottom: "10px" }}>Players: {playerCount}/2</div>
+      <div>Players: {playerCount}/2</div>
 
-      <div style={{ 
-        background: "#111", 
-        padding: "10px", 
-        margin: "15px auto", 
-        maxWidth: "700px", 
-        textAlign: "left", 
-        fontSize: "0.9rem",
+      <div style={{
+        background: "#111",
+        padding: "12px",
+        margin: "15px auto",
+        maxWidth: "700px",
+        textAlign: "left",
+        fontSize: "0.85rem",
         borderRadius: "8px",
-        maxHeight: "200px",
+        maxHeight: "220px",
         overflowY: "auto"
       }}>
-        {debugLogs.map((log, i) => (
-          <div key={i}>{log}</div>
-        ))}
+        {debugLogs.map((log, i) => <div key={i}>{log}</div>)}
       </div>
 
-      {!gameStarted && <p>Waiting for opponent... (auto-start in 5s)</p>}
+      {!gameStarted && <p>Waiting... (auto-start in 5 seconds)</p>}
 
       <canvas
         ref={canvasRef}
@@ -333,7 +338,7 @@ export default function PongGame({
 
       {winner && <button onClick={playAgain} style={{ marginTop: "20px", padding: "14px 36px" }}>Play Again</button>}
 
-      {gameStarted && <p style={{ marginTop: "15px" }}>Move mouse or swipe to control paddle</p>}
+      {gameStarted && <p>Move mouse / swipe to control paddle</p>}
     </div>
   );
 }
