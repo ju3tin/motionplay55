@@ -8,19 +8,24 @@ export default function RoomPage() {
   const params = useParams()
   const channelId = params?.channelId as string
 
+  const [userId, setUserId] = useState("")
+  const [connectedUserId, setConnectedUserId] = useState<string | null>(null)
+
+  const [pubnub, setPubnub] = useState<PubNub | null>(null)
   const [messages, setMessages] = useState<any[]>([])
-  const [status, setStatus] = useState("connecting")
+  const [status, setStatus] = useState("not connected")
 
-  useEffect(() => {
-    if (!channelId) return
+  // Connect ONLY when user clicks join
+  const joinRoom = () => {
+    if (!userId || !channelId) return
 
-    const pubnub = new PubNub({
+    const client = new PubNub({
       publishKey: process.env.NEXT_PUBLIC_PUBNUB_PUBLISH_KEY!,
       subscribeKey: process.env.NEXT_PUBLIC_PUBNUB_SUBSCRIBE_KEY!,
-      userId: "user-" + Math.random().toString(36).slice(2), // auto userId
+      userId: userId,
     })
 
-    pubnub.addListener({
+    client.addListener({
       message: (event) => {
         setMessages((prev) => [
           {
@@ -36,20 +41,45 @@ export default function RoomPage() {
       },
     })
 
-    pubnub.subscribe({
+    client.subscribe({
       channels: [channelId],
     })
 
-    return () => {
-      pubnub.unsubscribeAll()
-    }
-  }, [channelId])
+    setPubnub(client)
+    setConnectedUserId(userId)
+    setStatus("connecting...")
+  }
 
   return (
     <div style={{ padding: 20, fontFamily: "sans-serif" }}>
       <h1>Live Room</h1>
 
       <p><b>Channel:</b> {channelId}</p>
+
+      {/* USER INPUT */}
+      {!connectedUserId && (
+        <div style={{ marginBottom: 20 }}>
+          <input
+            placeholder="Enter userId"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            style={{
+              padding: 10,
+              marginRight: 10,
+              border: "1px solid #ccc",
+            }}
+          />
+
+          <button onClick={joinRoom}>
+            Join Room
+          </button>
+        </div>
+      )}
+
+      {connectedUserId && (
+        <p><b>User:</b> {connectedUserId}</p>
+      )}
+
       <p><b>Status:</b> {status}</p>
 
       <hr />
