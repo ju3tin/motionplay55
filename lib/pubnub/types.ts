@@ -1,3 +1,11 @@
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 export type GameMessage =
   | {
       type: "join";
@@ -14,9 +22,9 @@ export type GameMessage =
     }
   | {
       type: "input";
-      payload: unknown;
+      payload: JsonValue;
     }
   | {
       type: "state";
-      payload: unknown;
+      payload: JsonValue;
     };
