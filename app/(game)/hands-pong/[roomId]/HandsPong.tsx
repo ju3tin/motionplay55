@@ -99,16 +99,19 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         const palmX = landmarks[0]?.x || landmarks[9]?.x;
 
         if (palmX !== undefined) {
-          const normalizedX = (palmX / video.videoWidth) * WIDTH;
+          // Improved normalization with proper scaling
+          const scaleX = WIDTH / video.videoWidth;
+          const normalizedX = palmX * scaleX;
           const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, normalizedX - PADDLE_WIDTH / 2));
 
           publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
         }
 
-        // Draw flipped skeleton
-        hands.forEach((hand: any, i: number) => {
-          ctx.strokeStyle = i === 0 ? "#0f0" : "#f0f";
+        // Draw aligned & flipped skeleton
+        hands.forEach((hand: any) => {
+          ctx.strokeStyle = "#0f0";
           ctx.lineWidth = 4;
+
           const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
 
           fingers.forEach(finger => {
@@ -116,29 +119,35 @@ export default function HandsPong({ roomId }: { roomId: string }) {
             finger.forEach((idx, j) => {
               const pt = hand.keypoints[idx];
               if (!pt) return;
-              const x = WIDTH - pt.x; // Flip
-              j === 0 ? ctx.moveTo(x, pt.y) : ctx.lineTo(x, pt.y);
+              const x = WIDTH - (pt.x * (WIDTH / video.videoWidth)); // Proper flip + scale
+              const y = pt.y * (HEIGHT / video.videoHeight);
+              j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
             });
             ctx.stroke();
           });
 
+          // Keypoints
           ctx.fillStyle = "#ff0";
           hand.keypoints.forEach((pt: any) => {
+            const x = WIDTH - (pt.x * (WIDTH / video.videoWidth));
+            const y = pt.y * (HEIGHT / video.videoHeight);
             ctx.beginPath();
-            ctx.arc(WIDTH - pt.x, pt.y, 5, 0, Math.PI * 2);
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
             ctx.fill();
           });
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn(e);
+    }
 
     const { ball, score, paddles } = gameState;
 
-    // Paddle target zones
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.4)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(15, 25, WIDTH - 30, PADDLE_HEIGHT + 15);
-    ctx.strokeRect(15, HEIGHT - 60, WIDTH - 30, PADDLE_HEIGHT + 15);
+    // Paddle targets
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.5)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(15, 22, WIDTH - 30, PADDLE_HEIGHT + 20);
+    ctx.strokeRect(15, HEIGHT - 65, WIDTH - 30, PADDLE_HEIGHT + 20);
 
     // Paddles
     ctx.fillStyle = "#00ffff";
@@ -146,7 +155,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
     // Ball
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = "#fff";
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
@@ -212,7 +221,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right to control paddle</p>
+      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
@@ -248,7 +257,6 @@ export default function HandsPong({ roomId }: { roomId: string }) {
             border: "2px solid #0ff",
             borderRadius: "6px",
             zIndex: 20,
-            cursor: "pointer"
           }}
         >
           Sound: {soundEnabled ? "ON 🔊" : "OFF 🔇"}
