@@ -21,12 +21,111 @@ const PADDLE_WIDTH = 120;
 const PADDLE_HEIGHT = 20;
 const BALL_SIZE = 12;
 
+// Hand skeleton drawing helper
+const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color: string = "#0f0") => {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+
+  // Finger connections
+  const fingers = [
+    [0, 1, 2, 3, 4],           // thumb
+    [0, 5, 6, 7, 8],           // index
+    [0, 9, 10, 11, 12],        // middle
+    [0, 13, 14, 15, 16],       // ring
+    [0, 17, 18, 19, 20],       // pinky
+  ];
+
+  fingers.forEach((finger) => {
+    ctx.beginPath();
+    finger.forEach((index, i) => {
+      const point = landmarks[index];
+      if (!point) return;
+      if (i === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.stroke();
+  });
+
+  // Draw keypoints
+  ctx.fillStyle = "#ff0";
+  landmarks.forEach((point: any) => {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+};
+
+function GameCanvas({ gameState, onRender }: { 
+  gameState: GameState; 
+  onRender?: (ctx: CanvasRenderingContext2D, hands: any[]) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return;
+
+    const render = () => {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      const { ball, score, paddles } = gameState;
+
+      // Paddles
+      ctx.fillStyle = "#0ff";
+      ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+      // Ball
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Center line
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.moveTo(0, HEIGHT / 2);
+      ctx.lineTo(WIDTH, HEIGHT / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Score
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 48px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(score.top.toString(), WIDTH / 2, 100);
+      ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 60);
+
+      if (onRender) onRender(ctx, []);
+    };
+
+    render();
+  }, [gameState, onRender]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={WIDTH}
+      height={HEIGHT}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        border: "4px solid #fff",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
   const webcamRef = useRef<Webcam>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectorRef = useRef<any>(null);
-  const animationRef = useRef<number | null>(null); // ✅ Fixed
+  const animationRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
@@ -54,17 +153,15 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-    const oscillator = audioContextRef.current.createOscillator();
+    const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-
-    oscillator.type = type;
-    oscillator.frequency.value = frequency;
+    osc.type = type;
+    osc.frequency.value = frequency;
     gain.gain.value = 0.3;
-
-    oscillator.connect(gain);
+    osc.connect(gain);
     gain.connect(audioContextRef.current.destination);
-    oscillator.start();
-    setTimeout(() => oscillator.stop(), duration);
+    osc.start();
+    setTimeout(() => osc.stop(), duration);
   };
 
   const initDetector = useCallback(async () => {
@@ -72,7 +169,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     detectorRef.current = await handPoseDetection.createDetector(model, {
       runtime: "mediapipe",
       modelType: "full",
-      maxHands: 1,
+      maxHands: 2,
       solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands",
     });
   }, []);
@@ -85,6 +182,8 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }
 
     const hands = await detectorRef.current.estimateHands(video);
+
+    // Send own hand position
     if (hands.length > 0) {
       const landmarks = hands[0].keypoints;
       const palmX = landmarks[0]?.x || landmarks[9]?.x;
@@ -99,35 +198,27 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       }
     }
 
+    // Update physics
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
-
       ball.x += ball.vx;
       ball.y += ball.vy;
 
       if (ball.x <= 0 || ball.x >= WIDTH) ball.vx *= -1;
 
-      const topPaddleY = 30;
-      const bottomPaddleY = HEIGHT - 50;
+      const topY = 30;
+      const bottomY = HEIGHT - 50;
 
-      // Top paddle collision
-      if (
-        ball.y - BALL_SIZE / 2 <= topPaddleY + PADDLE_HEIGHT &&
-        ball.y + BALL_SIZE / 2 >= topPaddleY &&
-        ball.x >= paddles.top &&
-        ball.x <= paddles.top + PADDLE_WIDTH
-      ) {
-        ball.vy = Math.abs(ball.vy) * 1.02; // slight speed up
+      if (ball.y - BALL_SIZE / 2 <= topY + PADDLE_HEIGHT && 
+          ball.y + BALL_SIZE / 2 >= topY &&
+          ball.x >= paddles.top && ball.x <= paddles.top + PADDLE_WIDTH) {
+        ball.vy = Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      // Bottom paddle collision
-      if (
-        ball.y + BALL_SIZE / 2 >= bottomPaddleY &&
-        ball.y - BALL_SIZE / 2 <= bottomPaddleY + PADDLE_HEIGHT &&
-        ball.x >= paddles.bottom &&
-        ball.x <= paddles.bottom + PADDLE_WIDTH
-      ) {
+      if (ball.y + BALL_SIZE / 2 >= bottomY && 
+          ball.y - BALL_SIZE / 2 <= bottomY + PADDLE_HEIGHT &&
+          ball.x >= paddles.bottom && ball.x <= paddles.bottom + PADDLE_WIDTH) {
         ball.vy = -Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
@@ -135,18 +226,14 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       if (ball.y < 0) {
         score.bottom++;
         playSound(200, 300, "square");
-        ball.x = WIDTH / 2;
-        ball.y = HEIGHT / 2;
-        ball.vx = (Math.random() - 0.5) * 8;
-        ball.vy = 5;
+        ball.x = WIDTH / 2; ball.y = HEIGHT / 2;
+        ball.vx = (Math.random() - 0.5) * 8; ball.vy = 5;
       }
       if (ball.y > HEIGHT) {
         score.top++;
         playSound(200, 300, "square");
-        ball.x = WIDTH / 2;
-        ball.y = HEIGHT / 2;
-        ball.vx = (Math.random() - 0.5) * 8;
-        ball.vy = -5;
+        ball.x = WIDTH / 2; ball.y = HEIGHT / 2;
+        ball.vx = (Math.random() - 0.5) * 8; ball.vy = -5;
       }
 
       return { ball, score, paddles };
@@ -155,44 +242,19 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     animationRef.current = requestAnimationFrame(gameLoop);
   }, [publish, userId]);
 
-  // Canvas rendering
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Canvas + Hand Overlay
+  const handleCanvasRender = useCallback((ctx: CanvasRenderingContext2D) => {
+    const video = webcamRef.current?.video;
+    if (!video || !detectorRef.current) return;
 
-    const render = () => {
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-      ctx.strokeStyle = "#fff";
-      ctx.setLineDash([10, 10]);
-      ctx.beginPath();
-      ctx.moveTo(0, HEIGHT / 2);
-      ctx.lineTo(WIDTH, HEIGHT / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      const { ball, score, paddles } = gameState;
-
-      ctx.fillStyle = "#0ff";
-      ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
-      ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
-
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.font = "bold 48px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(score.top.toString(), WIDTH / 2, 100);
-      ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 60);
-    };
-
-    render();
-  }, [gameState]);
+    // We draw hands here on top of the game
+    detectorRef.current.estimateHands(video).then((hands: any[]) => {
+      hands.forEach((hand: any, index: number) => {
+        const color = index === 0 ? "#0f0" : "#f0f";
+        drawHandSkeleton(ctx, hand.keypoints, color);
+      });
+    });
+  }, []);
 
   useEffect(() => {
     initDetector().then(() => {
@@ -207,19 +269,25 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0, 8)}... | Move hand left/right</p>
+      <p>Your ID: {userId.slice(0, 8)}... | Move your hand left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
+        {/* Background Camera */}
         <Webcam
           ref={webcamRef}
           mirrored
-          style={{ width: 320, height: 240, border: "3px solid #0ff" }}
+          style={{
+            width: WIDTH,
+            height: HEIGHT,
+            objectFit: "cover",
+            border: "4px solid #333",
+          }}
         />
-        <canvas
-          ref={canvasRef}
-          width={WIDTH}
-          height={HEIGHT}
-          style={{ border: "4px solid #fff", background: "#000", marginTop: 20 }}
+
+        {/* Game + Hand Skeleton Overlay */}
+        <GameCanvas 
+          gameState={gameState} 
+          onRender={handleCanvasRender}
         />
       </div>
     </div>
