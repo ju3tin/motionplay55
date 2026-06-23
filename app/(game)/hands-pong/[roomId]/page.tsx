@@ -8,5 +8,5 @@ export default async function Page({
 }) {
   const { roomId } = await params;
 
-  return <TestRoomClient roomId={roomId} />;
+  return <HandsPong roomId={roomId} />;
 }
