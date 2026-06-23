@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import Webcam from "react-webcam";
 import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
 import "@tensorflow/tfjs-backend-webgl";
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
@@ -27,6 +28,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   const [detector, setDetector] = useState<any>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -59,13 +61,9 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.value = 0.25;
-    osc.connect(gain);
-    gain.connect(audioContextRef.current.destination);
-    osc.start();
-    setTimeout(() => osc.stop(), duration);
+    osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.25;
+    osc.connect(gain); gain.connect(audioContextRef.current.destination);
+    osc.start(); setTimeout(() => osc.stop(), duration);
   };
 
   const initDetector = useCallback(async () => {
@@ -82,33 +80,26 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     setDetector(det);
   }, []);
 
-  // Main render + game loop
   const gameLoop = useCallback(async () => {
+    const video = webcamRef.current?.video;
     const canvas = canvasRef.current;
-    if (!canvas || !detector || !isReady) {
+    if (!video || !canvas || !detector || !isReady || video.videoWidth === 0) {
       animationRef.current = requestAnimationFrame(gameLoop);
       return;
     }
 
-    const ctx = canvas.getContext("2d")!;
-    const video = canvas.parentElement?.querySelector("video") as HTMLVideoElement | null; // hidden video
-
-    // Draw video background
-    if (video) {
-      ctx.save();
-      ctx.scale(-1, 1); // mirror the video
-      ctx.drawImage(video, -WIDTH, 0, WIDTH, HEIGHT);
-      ctx.restore();
-    }
+    const ctx = canvas.getContext("2d", { alpha: true })!;
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
     try {
-      const hands = await detector.estimateHands(video || canvas);
+      const hands = await detector.estimateHands(video);
 
       if (hands.length > 0) {
         const landmarks = hands[0].keypoints;
         const palmX = landmarks[0]?.x || landmarks[9]?.x;
+
         if (palmX !== undefined) {
-          const normalizedX = (palmX / video!.videoWidth) * WIDTH;
+          const normalizedX = (palmX / video.videoWidth) * WIDTH;
           const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, normalizedX - PADDLE_WIDTH / 2));
 
           publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
@@ -125,13 +116,12 @@ export default function HandsPong({ roomId }: { roomId: string }) {
             finger.forEach((idx, j) => {
               const pt = hand.keypoints[idx];
               if (!pt) return;
-              const x = WIDTH - pt.x; // flip
+              const x = WIDTH - pt.x; // Flip
               j === 0 ? ctx.moveTo(x, pt.y) : ctx.lineTo(x, pt.y);
             });
             ctx.stroke();
           });
 
-          // Keypoints
           ctx.fillStyle = "#ff0";
           hand.keypoints.forEach((pt: any) => {
             ctx.beginPath();
@@ -142,29 +132,28 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       }
     } catch (e) {}
 
-    // Game elements
     const { ball, score, paddles } = gameState;
 
-    // Paddle targets / zones
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.3)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(20, 25, WIDTH - 40, PADDLE_HEIGHT + 10);     // Top target
-    ctx.strokeRect(20, HEIGHT - 55, WIDTH - 40, PADDLE_HEIGHT + 10); // Bottom target
+    // Paddle target zones
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.4)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(15, 25, WIDTH - 30, PADDLE_HEIGHT + 15);
+    ctx.strokeRect(15, HEIGHT - 60, WIDTH - 30, PADDLE_HEIGHT + 15);
 
     // Paddles
-    ctx.fillStyle = "#0ff";
+    ctx.fillStyle = "#00ffff";
     ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
     ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
     // Ball
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = "#ffffff";
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
     // Center line
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-    ctx.setLineDash([12, 8]);
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.setLineDash([10, 15]);
     ctx.beginPath();
     ctx.moveTo(0, HEIGHT / 2);
     ctx.lineTo(WIDTH, HEIGHT / 2);
@@ -173,12 +162,12 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
     // Score
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 56px Arial";
+    ctx.font = "bold 58px Arial";
     ctx.textAlign = "center";
-    ctx.fillText(score.top.toString(), WIDTH / 2, 110);
-    ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 70);
+    ctx.fillText(score.top.toString(), WIDTH / 2, 115);
+    ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 75);
 
-    // Update physics
+    // Physics
     setGameState((prev) => {
       let { ball: b, score: s, paddles: p } = prev;
       b.x += b.vx;
@@ -186,15 +175,13 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       if (b.x <= 0 || b.x >= WIDTH) b.vx *= -1;
 
-      const topY = 30;
-      const bottomY = HEIGHT - 50;
+      const topY = 30, bottomY = HEIGHT - 50;
 
       if (b.y - BALL_SIZE/2 <= topY + PADDLE_HEIGHT && b.y + BALL_SIZE/2 >= topY &&
           b.x >= p.top && b.x <= p.top + PADDLE_WIDTH) {
         b.vy = Math.abs(b.vy) * 1.03;
         playSound(680, 50);
       }
-
       if (b.y + BALL_SIZE/2 >= bottomY && b.y - BALL_SIZE/2 <= bottomY + PADDLE_HEIGHT &&
           b.x >= p.bottom && b.x <= p.bottom + PADDLE_WIDTH) {
         b.vy = -Math.abs(b.vy) * 1.03;
@@ -208,7 +195,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
-  }, [detector, isReady, publish, userId, soundEnabled]);
+  }, [detector, isReady, publish, userId, soundEnabled, gameState]);
 
   const handleVideoReady = () => setIsReady(true);
 
@@ -225,37 +212,43 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right</p>
+      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right to control paddle</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
-        {/* Hidden video for detection */}
-        <video
-          ref={(el) => {
-            if (el) {
-              el.srcObject = (document.querySelector("video") as any)?.srcObject || null;
-            }
-          }}
-          style={{ display: "none" }}
-          muted
-          playsInline
+        <Webcam
+          ref={webcamRef}
+          mirrored
+          onLoadedMetadata={handleVideoReady}
+          style={{ width: WIDTH, height: HEIGHT, objectFit: "cover", border: "5px solid #0ff" }}
         />
 
         <canvas
           ref={canvasRef}
           width={WIDTH}
           height={HEIGHT}
-          style={{ border: "5px solid #0ff", background: "#000" }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            pointerEvents: "none",
+            border: "5px solid #0ff"
+          }}
         />
 
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
           style={{
             position: "absolute",
-            top: 10,
-            right: 10,
-            padding: "8px 16px",
+            top: 15,
+            right: 15,
+            padding: "10px 18px",
             fontSize: "16px",
-            zIndex: 10,
+            background: "#00000088",
+            color: "white",
+            border: "2px solid #0ff",
+            borderRadius: "6px",
+            zIndex: 20,
+            cursor: "pointer"
           }}
         >
           Sound: {soundEnabled ? "ON 🔊" : "OFF 🔇"}
@@ -263,7 +256,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       </div>
 
       {!isReady && <p>Waiting for camera...</p>}
-      {!detector && <p>Loading AI Hand Detection...</p>}
+      {!detector && <p>Loading Hand Detection...</p>}
     </div>
   );
 }
