@@ -21,18 +21,16 @@ const PADDLE_WIDTH = 120;
 const PADDLE_HEIGHT = 20;
 const BALL_SIZE = 12;
 
-// Hand skeleton drawing helper
 const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color: string = "#0f0") => {
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
 
-  // Finger connections
   const fingers = [
-    [0, 1, 2, 3, 4],           // thumb
-    [0, 5, 6, 7, 8],           // index
-    [0, 9, 10, 11, 12],        // middle
-    [0, 13, 14, 15, 16],       // ring
-    [0, 17, 18, 19, 20],       // pinky
+    [0, 1, 2, 3, 4],
+    [0, 5, 6, 7, 8],
+    [0, 9, 10, 11, 12],
+    [0, 13, 14, 15, 16],
+    [0, 17, 18, 19, 20],
   ];
 
   fingers.forEach((finger) => {
@@ -46,7 +44,6 @@ const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color
     ctx.stroke();
   });
 
-  // Draw keypoints
   ctx.fillStyle = "#ff0";
   landmarks.forEach((point: any) => {
     ctx.beginPath();
@@ -57,7 +54,7 @@ const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color
 
 function GameCanvas({ gameState, onRender }: { 
   gameState: GameState; 
-  onRender?: (ctx: CanvasRenderingContext2D, hands: any[]) => void;
+  onRender?: (ctx: CanvasRenderingContext2D) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -99,7 +96,7 @@ function GameCanvas({ gameState, onRender }: {
       ctx.fillText(score.top.toString(), WIDTH / 2, 100);
       ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 60);
 
-      if (onRender) onRender(ctx, []);
+      onRender?.(ctx);
     };
 
     render();
@@ -114,8 +111,8 @@ function GameCanvas({ gameState, onRender }: {
         position: "absolute",
         top: 0,
         left: 0,
-        border: "4px solid #fff",
         pointerEvents: "none",
+        border: "4px solid #fff",
       }}
     />
   );
@@ -123,6 +120,7 @@ function GameCanvas({ gameState, onRender }: {
 
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const detectorRef = useRef<any>(null);
   const animationRef = useRef<number | null>(null);
@@ -176,29 +174,39 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
   const gameLoop = useCallback(async () => {
     const video = webcamRef.current?.video;
-    if (!video || !detectorRef.current) {
+    if (!video || !detectorRef.current || !isVideoReady) {
       animationRef.current = requestAnimationFrame(gameLoop);
       return;
     }
 
-    const hands = await detectorRef.current.estimateHands(video);
-
-    // Send own hand position
-    if (hands.length > 0) {
-      const landmarks = hands[0].keypoints;
-      const palmX = landmarks[0]?.x || landmarks[9]?.x;
-      if (palmX !== undefined) {
-        const normalizedX = (palmX / video.videoWidth) * WIDTH;
-        const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
-
-        publish({
-          type: "hand",
-          payload: { x: paddleX, playerId: userId },
-        });
-      }
+    // Critical safety check
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      animationRef.current = requestAnimationFrame(gameLoop);
+      return;
     }
 
-    // Update physics
+    try {
+      const hands = await detectorRef.current.estimateHands(video);
+
+      // Send own hand position
+      if (hands.length > 0) {
+        const landmarks = hands[0].keypoints;
+        const palmX = landmarks[0]?.x || landmarks[9]?.x;
+        if (palmX !== undefined) {
+          const normalizedX = (palmX / video.videoWidth) * WIDTH;
+          const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
+
+          publish({
+            type: "hand",
+            payload: { x: paddleX, playerId: userId },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Hand detection error:", err);
+    }
+
+    // Game physics
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
       ball.x += ball.vx;
@@ -240,21 +248,26 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
-  }, [publish, userId]);
+  }, [publish, userId, isVideoReady]);
 
-  // Canvas + Hand Overlay
   const handleCanvasRender = useCallback((ctx: CanvasRenderingContext2D) => {
     const video = webcamRef.current?.video;
-    if (!video || !detectorRef.current) return;
+    if (!video || !detectorRef.current || video.videoWidth === 0) return;
 
-    // We draw hands here on top of the game
     detectorRef.current.estimateHands(video).then((hands: any[]) => {
-      hands.forEach((hand: any, index: number) => {
-        const color = index === 0 ? "#0f0" : "#f0f";
-        drawHandSkeleton(ctx, hand.keypoints, color);
+      hands.forEach((hand: any, i: number) => {
+        drawHandSkeleton(ctx, hand.keypoints, i === 0 ? "#0f0" : "#f0f");
       });
-    });
+    }).catch(() => {});
   }, []);
+
+  // Video ready handler
+  const handleVideoLoad = () => {
+    const video = webcamRef.current?.video;
+    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+      setIsVideoReady(true);
+    }
+  };
 
   useEffect(() => {
     initDetector().then(() => {
@@ -269,13 +282,13 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0, 8)}... | Move your hand left/right</p>
+      <p>Your ID: {userId.slice(0, 8)}... | Move your hand left/right to control paddle</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
-        {/* Background Camera */}
         <Webcam
           ref={webcamRef}
           mirrored
+          onLoadedMetadata={handleVideoLoad}
           style={{
             width: WIDTH,
             height: HEIGHT,
@@ -284,12 +297,10 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           }}
         />
 
-        {/* Game + Hand Skeleton Overlay */}
-        <GameCanvas 
-          gameState={gameState} 
-          onRender={handleCanvasRender}
-        />
+        <GameCanvas gameState={gameState} onRender={handleCanvasRender} />
       </div>
+
+      {!isVideoReady && <p>Waiting for camera...</p>}
     </div>
   );
 }
