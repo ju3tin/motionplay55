@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import Webcam from "react-webcam";
-import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
 
 type HandMessage = {
@@ -20,6 +19,12 @@ const HEIGHT = 600;
 const PADDLE_WIDTH = 120;
 const PADDLE_HEIGHT = 20;
 const BALL_SIZE = 12;
+
+declare global {
+  interface Window {
+    handpose: any;
+  }
+}
 
 const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color: string = "#0f0") => {
   ctx.strokeStyle = color;
@@ -107,8 +112,9 @@ function GameCanvas({ gameState, onRender }: {
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
   const [isReady, setIsReady] = useState(false);
+  const [model, setModel] = useState<any>(null);
+
   const webcamRef = useRef<Webcam>(null);
-  const detectorRef = useRef<any>(null);
   const animationRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -139,51 +145,56 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.value = 0.3;
-    osc.connect(gain);
-    gain.connect(audioContextRef.current.destination);
-    osc.start();
-    setTimeout(() => osc.stop(), duration);
+    osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.3;
+    osc.connect(gain); gain.connect(audioContextRef.current.destination);
+    osc.start(); setTimeout(() => osc.stop(), duration);
   };
 
-  const initDetector = useCallback(async () => {
-    const model = handPoseDetection.SupportedModels.MediaPipeHands;
-    detectorRef.current = await handPoseDetection.createDetector(model, {
-      runtime: "mediapipe",
-      modelType: "full",
-      maxHands: 2,
-      solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands",   // ← CDN Fix
-    });
-    console.log("✅ Hand detector initialized with MediaPipe CDN");
+  // Load the exact script you wanted
+  const loadHandposeScript = useCallback(async () => {
+    if (window.handpose) return;
+
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.1.0/dist/handpose.min.js";
+    script.async = true;
+
+    script.onload = async () => {
+      console.log("✅ handpose script loaded");
+      const net = await window.handpose.load();
+      setModel(net);
+      console.log("✅ Handpose model ready");
+    };
+
+    document.head.appendChild(script);
   }, []);
 
   const gameLoop = useCallback(async () => {
     const video = webcamRef.current?.video;
-    if (!video || !detectorRef.current || !isReady || video.videoWidth === 0) {
+    if (!video || !model || !isReady || video.videoWidth === 0) {
       animationRef.current = requestAnimationFrame(gameLoop);
       return;
     }
 
     try {
-      const hands = await detectorRef.current.estimateHands(video);
+      const predictions = await model.estimateHands(video);
 
-      if (hands.length > 0) {
-        const landmarks = hands[0].keypoints;
-        const palmX = landmarks[0]?.x || landmarks[9]?.x;
-        if (palmX !== undefined) {
-          const normalizedX = (palmX / video.videoWidth) * WIDTH;
-          const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
+      if (predictions.length > 0) {
+        const landmarks = predictions[0].landmarks; // array of [x, y, z]
+        const palmX = landmarks[0][0] || landmarks[9][0]; // wrist or middle finger base
 
-          publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
-        }
+        const normalizedX = (palmX / video.videoWidth) * WIDTH;
+        const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
+
+        publish({
+          type: "hand",
+          payload: { x: paddleX, playerId: userId },
+        });
       }
     } catch (e) {
-      console.warn("Hand detection error:", e);
+      console.warn("Handpose error:", e);
     }
 
-    // Game physics
+    // Physics
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
       ball.x += ball.vx;
@@ -194,36 +205,28 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       const topY = 30;
       const bottomY = HEIGHT - 50;
 
-      if (ball.y - BALL_SIZE / 2 <= topY + PADDLE_HEIGHT &&
+      if (ball.y - BALL_SIZE / 2 <= topY + PADDLE_HEIGHT && 
           ball.y + BALL_SIZE / 2 >= topY &&
           ball.x >= paddles.top && ball.x <= paddles.top + PADDLE_WIDTH) {
         ball.vy = Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y + BALL_SIZE / 2 >= bottomY &&
+      if (ball.y + BALL_SIZE / 2 >= bottomY && 
           ball.y - BALL_SIZE / 2 <= bottomY + PADDLE_HEIGHT &&
           ball.x >= paddles.bottom && ball.x <= paddles.bottom + PADDLE_WIDTH) {
         ball.vy = -Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y < 0) {
-        score.bottom++;
-        playSound(200, 300, "square");
-        resetBall(ball, 5);
-      }
-      if (ball.y > HEIGHT) {
-        score.top++;
-        playSound(200, 300, "square");
-        resetBall(ball, -5);
-      }
+      if (ball.y < 0) { score.bottom++; playSound(200, 300, "square"); resetBall(ball, 5); }
+      if (ball.y > HEIGHT) { score.top++; playSound(200, 300, "square"); resetBall(ball, -5); }
 
       return { ball, score, paddles };
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
-  }, [publish, userId, isReady]);
+  }, [model, publish, userId, isReady]);
 
   const resetBall = (ball: any, vy: number) => {
     ball.x = WIDTH / 2;
@@ -234,14 +237,14 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
   const handleCanvasRender = useCallback((ctx: CanvasRenderingContext2D) => {
     const video = webcamRef.current?.video;
-    if (!video || !detectorRef.current || video.videoWidth === 0) return;
+    if (!video || !model || video.videoWidth === 0) return;
 
-    detectorRef.current.estimateHands(video).then((hands: any[]) => {
-      hands.forEach((hand: any, i: number) => {
-        drawHandSkeleton(ctx, hand.keypoints, i === 0 ? "#0f0" : "#f0f");
+    model.estimateHands(video).then((predictions: any[]) => {
+      predictions.forEach((pred: any, i: number) => {
+        drawHandSkeleton(ctx, pred.landmarks, i === 0 ? "#0f0" : "#f0f");
       });
     }).catch(() => {});
-  }, []);
+  }, [model]);
 
   const handleVideoReady = () => {
     const video = webcamRef.current?.video;
@@ -249,18 +252,21 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   };
 
   useEffect(() => {
-    initDetector().then(() => {
-      animationRef.current = requestAnimationFrame(gameLoop);
-    });
+    loadHandposeScript();
+  }, [loadHandposeScript]);
+
+  useEffect(() => {
+    if (!model) return;
+    animationRef.current = requestAnimationFrame(gameLoop);
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [initDetector, gameLoop]);
+  }, [model, gameLoop]);
 
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
-      <h1>Hands Pong — Room: {roomId}</h1>
+      <h1>Hands Pong (Legacy Handpose) — Room: {roomId}</h1>
       <p>Your ID: {userId.slice(0,8)}... | Move hand left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
@@ -274,6 +280,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       </div>
 
       {!isReady && <p>Waiting for camera...</p>}
+      {!model && <p>Loading Handpose model...</p>}
     </div>
   );
 }
