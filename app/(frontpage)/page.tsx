@@ -38,7 +38,7 @@ export default async function Home() {
   return (
     <div className="min-h-screen bg-background">
     
-      <main className="pt-16">
+      <main>
         <HeroSection />
         <FeaturesSection />
        <GamesView games={games || []} />
