@@ -103,14 +103,29 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       hands.forEach((hand: any) => {
         const landmarks = hand.keypoints;
-        const palmBase = landmarks[9] || landmarks[0];
+        const handedness = (hand.handedness || "").toLowerCase();
+        const isLeftHand = handedness.includes("left");
 
-        // Rough palm visibility check
-        const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 90;
+        const palmBase = landmarks[9] || landmarks[0]; // middle finger base
+
+        // Rough palm facing detection
+        const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 85;
 
         if (palmBase && isPalmVisible) {
-          const normalizedX = palmBase.x * scaleX;
-          const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, normalizedX - PADDLE_WIDTH / 2));
+          let targetX = palmBase.x * scaleX;
+
+          // FLIPPED CONTROL AS REQUESTED:
+          // Right hand palm → move paddle LEFT
+          // Left hand palm → move paddle RIGHT
+          if (isLeftHand) {
+            // Left hand → push paddle to the right
+            targetX = WIDTH - targetX; // invert
+          } else {
+            // Right hand → push paddle to the left (already natural, but we keep logic clear)
+            targetX = WIDTH * 0.3 + (WIDTH * 0.4 - targetX); // bias left
+          }
+
+          const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, targetX - PADDLE_WIDTH / 2));
 
           publish({
             type: "hand",
@@ -119,7 +134,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         }
 
         // Draw skeleton
-        ctx.strokeStyle = "#0f0";
+        ctx.strokeStyle = isLeftHand ? "#f0f" : "#0f0";
         ctx.lineWidth = 4;
         const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
 
@@ -144,13 +159,11 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           ctx.fill();
         });
       });
-    } catch (e) {
-      console.warn(e);
-    }
+    } catch (e) {}
 
     const { ball, score, paddles } = gameState;
 
-    // Paddle targets
+    // Visual targets
     ctx.strokeStyle = "rgba(0,255,255,0.5)";
     ctx.lineWidth = 4;
     ctx.strokeRect(15, 25, WIDTH - 30, PADDLE_HEIGHT + 20);
@@ -161,13 +174,12 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
     ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-    // Ball
+    // Ball, line, score...
     ctx.fillStyle = "#fff";
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Center line
     ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.setLineDash([10, 15]);
     ctx.beginPath();
@@ -176,14 +188,13 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Score
     ctx.fillStyle = "#fff";
     ctx.font = "bold 58px Arial";
     ctx.textAlign = "center";
     ctx.fillText(score.top.toString(), WIDTH / 2, 110);
     ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 70);
 
-    // Physics
+    // Physics (unchanged)
     setGameState((prev) => {
       let { ball: b, score: s, paddles: p } = prev;
       b.x += b.vx;
@@ -228,7 +239,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Show your palm to move paddle left/right</p>
+      <p>Your ID: {userId.slice(0,8)}... | <strong>Right Hand Palm</strong> → Paddle Left | <strong>Left Hand Palm</strong> → Paddle Right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
