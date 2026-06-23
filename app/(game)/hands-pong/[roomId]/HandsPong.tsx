@@ -2,8 +2,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Webcam from "react-webcam";
 import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
-import * as tf from "@tensorflow/tfjs-core";
-import "@tensorflow/tfjs-backend-webgl";   // ← Important
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
 
 type HandMessage = {
@@ -120,17 +118,20 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     paddles: { top: WIDTH / 2 - PADDLE_WIDTH / 2, bottom: WIDTH / 2 - PADDLE_WIDTH / 2 },
   });
 
-  const { publish } = useGameRoom<HandMessage>({ roomId, onMessage: (msg) => {
-    if (msg.type === "hand") {
-      setGameState((prev) => ({
-        ...prev,
-        paddles: {
-          ...prev.paddles,
-          [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
-        },
-      }));
-    }
-  }});
+  const { publish } = useGameRoom<HandMessage>({
+    roomId,
+    onMessage: (msg) => {
+      if (msg.type === "hand") {
+        setGameState((prev) => ({
+          ...prev,
+          paddles: {
+            ...prev.paddles,
+            [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
+          },
+        }));
+      }
+    },
+  });
 
   const playSound = (freq: number, duration: number, type: "sine" | "square" = "sine") => {
     if (!audioContextRef.current) {
@@ -138,22 +139,24 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.3;
-    osc.connect(gain); gain.connect(audioContextRef.current.destination);
-    osc.start(); setTimeout(() => osc.stop(), duration);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = 0.3;
+    osc.connect(gain);
+    gain.connect(audioContextRef.current.destination);
+    osc.start();
+    setTimeout(() => osc.stop(), duration);
   };
 
   const initDetector = useCallback(async () => {
-    // Initialize TensorFlow backend
-    await tf.ready();
-    await tf.setBackend("webgl");
-
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
     detectorRef.current = await handPoseDetection.createDetector(model, {
-      runtime: "tfjs",
+      runtime: "mediapipe",
       modelType: "full",
+      maxHands: 2,
+      solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands",   // ← CDN Fix
     });
-    console.log("✅ Hand detector ready with backend:", tf.getBackend());
+    console.log("✅ Hand detector initialized with MediaPipe CDN");
   }, []);
 
   const gameLoop = useCallback(async () => {
@@ -177,10 +180,10 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         }
       }
     } catch (e) {
-      console.warn("Detection error:", e);
+      console.warn("Hand detection error:", e);
     }
 
-    // Physics update
+    // Game physics
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
       ball.x += ball.vx;
@@ -188,22 +191,33 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       if (ball.x <= 0 || ball.x >= WIDTH) ball.vx *= -1;
 
-      const topY = 30, bottomY = HEIGHT - 50;
+      const topY = 30;
+      const bottomY = HEIGHT - 50;
 
-      if (ball.y - BALL_SIZE/2 <= topY + PADDLE_HEIGHT && ball.y + BALL_SIZE/2 >= topY &&
+      if (ball.y - BALL_SIZE / 2 <= topY + PADDLE_HEIGHT &&
+          ball.y + BALL_SIZE / 2 >= topY &&
           ball.x >= paddles.top && ball.x <= paddles.top + PADDLE_WIDTH) {
         ball.vy = Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y + BALL_SIZE/2 >= bottomY && ball.y - BALL_SIZE/2 <= bottomY + PADDLE_HEIGHT &&
+      if (ball.y + BALL_SIZE / 2 >= bottomY &&
+          ball.y - BALL_SIZE / 2 <= bottomY + PADDLE_HEIGHT &&
           ball.x >= paddles.bottom && ball.x <= paddles.bottom + PADDLE_WIDTH) {
         ball.vy = -Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y < 0) { score.bottom++; playSound(200, 300, "square"); resetBall(ball, 5); }
-      if (ball.y > HEIGHT) { score.top++; playSound(200, 300, "square"); resetBall(ball, -5); }
+      if (ball.y < 0) {
+        score.bottom++;
+        playSound(200, 300, "square");
+        resetBall(ball, 5);
+      }
+      if (ball.y > HEIGHT) {
+        score.top++;
+        playSound(200, 300, "square");
+        resetBall(ball, -5);
+      }
 
       return { ball, score, paddles };
     });
