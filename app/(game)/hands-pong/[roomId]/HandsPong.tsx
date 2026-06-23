@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Webcam from "react-webcam";
 import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";   // ← Important
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
 
 type HandMessage = {
@@ -26,11 +28,11 @@ const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color
   ctx.lineWidth = 3;
 
   const fingers = [
-    [0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12],
-    [0, 13, 14, 15, 16], [0, 17, 18, 19, 20],
+    [0,1,2,3,4], [0,5,6,7,8], [0,9,10,11,12],
+    [0,13,14,15,16], [0,17,18,19,20]
   ];
 
-  fingers.forEach((finger) => {
+  fingers.forEach(finger => {
     ctx.beginPath();
     finger.forEach((index, i) => {
       const pt = landmarks[index];
@@ -94,7 +96,14 @@ function GameCanvas({ gameState, onRender }: {
     render();
   }, [gameState, onRender]);
 
-  return <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", border: "4px solid #fff" }} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      width={WIDTH}
+      height={HEIGHT}
+      style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", border: "4px solid #fff" }}
+    />
+  );
 }
 
 export default function HandsPong({ roomId }: { roomId: string }) {
@@ -124,7 +133,9 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   }});
 
   const playSound = (freq: number, duration: number, type: "sine" | "square" = "sine") => {
-    if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
     osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.3;
@@ -133,11 +144,16 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   };
 
   const initDetector = useCallback(async () => {
+    // Initialize TensorFlow backend
+    await tf.ready();
+    await tf.setBackend("webgl");
+
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
     detectorRef.current = await handPoseDetection.createDetector(model, {
-      runtime: "tfjs",           // ← Changed from mediapipe
+      runtime: "tfjs",
       modelType: "full",
     });
+    console.log("✅ Hand detector ready with backend:", tf.getBackend());
   }, []);
 
   const gameLoop = useCallback(async () => {
@@ -164,7 +180,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       console.warn("Detection error:", e);
     }
 
-    // Physics
+    // Physics update
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
       ball.x += ball.vx;
@@ -223,7 +239,9 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       animationRef.current = requestAnimationFrame(gameLoop);
     });
 
-    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
   }, [initDetector, gameLoop]);
 
   return (
