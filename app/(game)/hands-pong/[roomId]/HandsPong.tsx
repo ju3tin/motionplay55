@@ -24,6 +24,9 @@ const PADDLE_HEIGHT = 24;
 const BALL_SIZE = 14;
 const WIN_SCORE = 2;
 
+const LEFT_TARGET = { x: 40, y: 20, w: 200, h: 60 };
+const RIGHT_TARGET = { x: WIDTH - 240, y: 20, w: 200, h: 60 };
+
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
   const [isReady, setIsReady] = useState(false);
@@ -109,33 +112,36 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       hands.forEach((hand: any) => {
         const landmarks = hand.keypoints;
-        const handedness = (hand.handedness || "").toLowerCase();
-        const isLeftHand = handedness.includes("left");
+        const palm = landmarks[9] || landmarks[0]; // palm center
 
-        const palmBase = landmarks[9] || landmarks[0];
-        const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 85;
+        if (palm) {
+          const canvasX = WIDTH - (palm.x * scaleX); // flipped
+          const canvasY = palm.y * scaleY;
 
-        if (palmBase && isPalmVisible) {
-          const rawX = palmBase.x * scaleX;
-          let paddleX = rawX;
+          const isPalmVisible = Math.abs(landmarks[0].y - landmarks[9].y) < 85;
 
-          if (isLeftHand) {
-            // Left hand over Left Target
-            leftTargetActive = true;
-            paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, rawX - PADDLE_WIDTH / 2));
-            targetTop = paddleX;
-          } else {
-            // Right hand over Right Target
-            rightTargetActive = true;
-            paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, rawX - PADDLE_WIDTH / 2));
-            targetBottom = paddleX;
+          if (isPalmVisible) {
+            // Check if palm is over targets
+            if (canvasX > LEFT_TARGET.x && canvasX < LEFT_TARGET.x + LEFT_TARGET.w &&
+                canvasY > LEFT_TARGET.y && canvasY < LEFT_TARGET.y + LEFT_TARGET.h) {
+              leftTargetActive = true;
+              const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, canvasX - PADDLE_WIDTH / 2));
+              targetTop = paddleX;
+            }
+
+            if (canvasX > RIGHT_TARGET.x && canvasX < RIGHT_TARGET.x + RIGHT_TARGET.w &&
+                canvasY > RIGHT_TARGET.y && canvasY < RIGHT_TARGET.y + RIGHT_TARGET.h) {
+              rightTargetActive = true;
+              const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, canvasX - PADDLE_WIDTH / 2));
+              targetBottom = paddleX;
+            }
+
+            publish({ type: "hand", payload: { x: canvasX - PADDLE_WIDTH / 2, playerId: userId } });
           }
-
-          publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
         }
 
         // Draw skeleton
-        ctx.strokeStyle = isLeftHand ? "#0f0" : "#f0f";
+        ctx.strokeStyle = "#0f0";
         ctx.lineWidth = 4;
         const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
 
@@ -162,7 +168,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       });
     } catch (e) {}
 
-    // Smooth paddle sliding
+    // Smooth paddle movement
     setGameState((prev) => {
       const newTop = lerp(prev.paddles.top, targetTop, 0.32);
       const newBottom = lerp(prev.paddles.bottom, targetBottom, 0.32);
@@ -195,29 +201,24 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       if (s.top >= WIN_SCORE) w = "Top";
       if (s.bottom >= WIN_SCORE) w = "Bottom";
 
-      return { 
-        ball: b, 
-        score: s, 
-        paddles: { top: newTop, bottom: newBottom }, 
-        winner: w 
-      };
+      return { ball: b, score: s, paddles: { top: newTop, bottom: newBottom }, winner: w };
     });
 
     const { ball, score, paddles, winner } = gameState;
 
-    // Targets with glow
+    // Draw Targets with dynamic glow
     ctx.strokeStyle = leftTargetActive ? "#00ff00" : "#666";
-    ctx.lineWidth = leftTargetActive ? 8 : 4;
-    ctx.strokeRect(40, 20, 200, 60);
+    ctx.lineWidth = leftTargetActive ? 10 : 4;
+    ctx.strokeRect(LEFT_TARGET.x, LEFT_TARGET.y, LEFT_TARGET.w, LEFT_TARGET.h);
 
     ctx.strokeStyle = rightTargetActive ? "#00ff00" : "#666";
-    ctx.lineWidth = rightTargetActive ? 8 : 4;
-    ctx.strokeRect(WIDTH - 240, 20, 200, 60);
+    ctx.lineWidth = rightTargetActive ? 10 : 4;
+    ctx.strokeRect(RIGHT_TARGET.x, RIGHT_TARGET.y, RIGHT_TARGET.w, RIGHT_TARGET.h);
 
-    ctx.fillStyle = leftTargetActive ? "rgba(0,255,0,0.3)" : "rgba(255,255,0,0.08)";
-    ctx.fillRect(40, 20, 200, 60);
-    ctx.fillStyle = rightTargetActive ? "rgba(0,255,0,0.3)" : "rgba(255,255,0,0.08)";
-    ctx.fillRect(WIDTH - 240, 20, 200, 60);
+    ctx.fillStyle = leftTargetActive ? "rgba(0,255,0,0.35)" : "rgba(255,255,0,0.08)";
+    ctx.fillRect(LEFT_TARGET.x, LEFT_TARGET.y, LEFT_TARGET.w, LEFT_TARGET.h);
+    ctx.fillStyle = rightTargetActive ? "rgba(0,255,0,0.35)" : "rgba(255,255,0,0.08)";
+    ctx.fillRect(RIGHT_TARGET.x, RIGHT_TARGET.y, RIGHT_TARGET.w, RIGHT_TARGET.h);
 
     ctx.fillStyle = "#ffff00";
     ctx.font = "bold 18px Arial";
@@ -229,13 +230,12 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
     ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-    // Ball
+    // Ball & other elements
     ctx.fillStyle = "#fff";
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Center line
     ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.setLineDash([10, 15]);
     ctx.beginPath();
@@ -244,7 +244,6 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Score
     ctx.fillStyle = "#fff";
     ctx.font = "bold 58px Arial";
     ctx.textAlign = "center";
@@ -282,7 +281,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Best of 3 — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Left Hand on Left Target → Paddle Left | Right Hand on Right Target → Paddle Right</p>
+      <p>Left Hand on Left Target → Paddle Left | Right Hand on Right Target → Paddle Right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
