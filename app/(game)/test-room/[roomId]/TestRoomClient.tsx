@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
-import { GameMessage } from "@/lib/pubnub/types";
+import { GameMessage } from "@/lib/pubnub/types1";
 
 export default function TestRoomClient({
   roomId,
