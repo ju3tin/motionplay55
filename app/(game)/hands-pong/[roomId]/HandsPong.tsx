@@ -47,7 +47,6 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           ...prev,
           paddles: {
             ...prev.paddles,
-            // You control one paddle (you can change logic later)
             [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
           },
         }));
@@ -62,9 +61,13 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = "sine"; osc.frequency.value = freq; gain.gain.value = 0.25;
-    osc.connect(gain); gain.connect(audioContextRef.current.destination);
-    osc.start(); setTimeout(() => osc.stop(), duration);
+    osc.type = "sine"; 
+    osc.frequency.value = freq; 
+    gain.gain.value = 0.25;
+    osc.connect(gain); 
+    gain.connect(audioContextRef.current.destination);
+    osc.start(); 
+    setTimeout(() => osc.stop(), duration);
   };
 
   const initDetector = useCallback(async () => {
@@ -92,18 +95,20 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     const ctx = canvas.getContext("2d", { alpha: true })!;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
+    const scaleX = WIDTH / video.videoWidth;
+    const scaleY = HEIGHT / video.videoHeight;
+
     try {
       const hands = await detector.estimateHands(video);
 
       hands.forEach((hand: any) => {
         const landmarks = hand.keypoints;
-        const palmBase = landmarks[9] || landmarks[0]; // middle finger MCP or wrist
+        const palmBase = landmarks[9] || landmarks[0];
 
-        // Simple palm facing check (rough)
-        const isPalmVisible = Math.abs(landmarks[0].y - landmarks[9].y) < 80; // rough heuristic
+        // Rough palm visibility check
+        const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 90;
 
         if (palmBase && isPalmVisible) {
-          const scaleX = WIDTH / video.videoWidth;
           const normalizedX = palmBase.x * scaleX;
           const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, normalizedX - PADDLE_WIDTH / 2));
 
@@ -124,7 +129,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
             const pt = landmarks[idx];
             if (!pt) return;
             const x = WIDTH - (pt.x * scaleX);
-            const y = pt.y * (HEIGHT / video.videoHeight);
+            const y = pt.y * scaleY;
             j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
           });
           ctx.stroke();
@@ -133,13 +138,15 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         ctx.fillStyle = "#ff0";
         landmarks.forEach((pt: any) => {
           const x = WIDTH - (pt.x * scaleX);
-          const y = pt.y * (HEIGHT / video.videoHeight);
+          const y = pt.y * scaleY;
           ctx.beginPath();
           ctx.arc(x, y, 5, 0, Math.PI * 2);
           ctx.fill();
         });
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn(e);
+    }
 
     const { ball, score, paddles } = gameState;
 
@@ -160,7 +167,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Center line & Score
+    // Center line
     ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.setLineDash([10, 15]);
     ctx.beginPath();
@@ -169,6 +176,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Score
     ctx.fillStyle = "#fff";
     ctx.font = "bold 58px Arial";
     ctx.textAlign = "center";
@@ -196,21 +204,14 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         playSound(680, 50);
       }
 
-      if (b.y < 0) { s.bottom++; playSound(180, 400); resetBall(b, 5.5); }
-      if (b.y > HEIGHT) { s.top++; playSound(180, 400); resetBall(b, -5.5); }
+      if (b.y < 0) { s.bottom++; playSound(180, 400); b.x = WIDTH/2; b.y = HEIGHT/2; b.vx = (Math.random()-0.5)*8; b.vy = 5.5; }
+      if (b.y > HEIGHT) { s.top++; playSound(180, 400); b.x = WIDTH/2; b.y = HEIGHT/2; b.vx = (Math.random()-0.5)*8; b.vy = -5.5; }
 
       return { ball: b, score: s, paddles: p };
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
   }, [detector, isReady, publish, userId, soundEnabled, gameState]);
-
-  const resetBall = (ball: any, vy: number) => {
-    ball.x = WIDTH / 2;
-    ball.y = HEIGHT / 2;
-    ball.vx = (Math.random() - 0.5) * 8;
-    ball.vy = vy;
-  };
 
   const handleVideoReady = () => setIsReady(true);
 
@@ -227,7 +228,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Show your palm to control your paddle left/right</p>
+      <p>Your ID: {userId.slice(0,8)}... | Show your palm to move paddle left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
