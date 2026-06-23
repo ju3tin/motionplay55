@@ -12,7 +12,7 @@ type HandMessage = {
 type GameState = {
   ball: { x: number; y: number; vx: number; vy: number };
   score: { top: number; bottom: number };
-  paddles: { top: number; bottom: number }; // x position
+  paddles: { top: number; bottom: number };
 };
 
 const WIDTH = 800;
@@ -26,7 +26,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectorRef = useRef<any>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | null>(null); // ✅ Fixed
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
@@ -51,7 +51,9 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   });
 
   const playSound = (frequency: number, duration: number, type: "sine" | "square" = "sine") => {
-    if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
     const oscillator = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
 
@@ -82,12 +84,11 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       return;
     }
 
-    // Hand detection
     const hands = await detectorRef.current.estimateHands(video);
     if (hands.length > 0) {
       const landmarks = hands[0].keypoints;
-      const palmX = landmarks[0]?.x || landmarks[9]?.x; // wrist or middle finger MCP
-      if (palmX) {
+      const palmX = landmarks[0]?.x || landmarks[9]?.x;
+      if (palmX !== undefined) {
         const normalizedX = (palmX / video.videoWidth) * WIDTH;
         const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
 
@@ -98,41 +99,39 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       }
     }
 
-    // Update game physics locally
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
 
       ball.x += ball.vx;
       ball.y += ball.vy;
 
-      // Wall bounce (left/right)
       if (ball.x <= 0 || ball.x >= WIDTH) ball.vx *= -1;
 
-      // Paddle collision
       const topPaddleY = 30;
       const bottomPaddleY = HEIGHT - 50;
 
+      // Top paddle collision
       if (
         ball.y - BALL_SIZE / 2 <= topPaddleY + PADDLE_HEIGHT &&
         ball.y + BALL_SIZE / 2 >= topPaddleY &&
         ball.x >= paddles.top &&
         ball.x <= paddles.top + PADDLE_WIDTH
       ) {
-        ball.vy = Math.abs(ball.vy);
+        ball.vy = Math.abs(ball.vy) * 1.02; // slight speed up
         playSound(600, 60);
       }
 
+      // Bottom paddle collision
       if (
         ball.y + BALL_SIZE / 2 >= bottomPaddleY &&
         ball.y - BALL_SIZE / 2 <= bottomPaddleY + PADDLE_HEIGHT &&
         ball.x >= paddles.bottom &&
         ball.x <= paddles.bottom + PADDLE_WIDTH
       ) {
-        ball.vy = -Math.abs(ball.vy);
+        ball.vy = -Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      // Scoring
       if (ball.y < 0) {
         score.bottom++;
         playSound(200, 300, "square");
@@ -156,7 +155,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     animationRef.current = requestAnimationFrame(gameLoop);
   }, [publish, userId]);
 
-  // Render game on canvas
+  // Canvas rendering
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -167,7 +166,6 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-      // Center line
       ctx.strokeStyle = "#fff";
       ctx.setLineDash([10, 10]);
       ctx.beginPath();
@@ -178,18 +176,15 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       const { ball, score, paddles } = gameState;
 
-      // Paddles
       ctx.fillStyle = "#0ff";
-      ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT); // Top
-      ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT); // Bottom
+      ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-      // Ball
       ctx.fillStyle = "#fff";
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Score
       ctx.font = "bold 48px Arial";
       ctx.textAlign = "center";
       ctx.fillText(score.top.toString(), WIDTH / 2, 100);
@@ -211,8 +206,8 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
-      <h1>Hands Pong (Horizontal) — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0, 8)}... | Move your hand left/right to control paddle</p>
+      <h1>Hands Pong — Room: {roomId}</h1>
+      <p>Your ID: {userId.slice(0, 8)}... | Move hand left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
@@ -224,18 +219,8 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           ref={canvasRef}
           width={WIDTH}
           height={HEIGHT}
-          style={{
-            border: "4px solid #fff",
-            background: "#000",
-            marginTop: 20,
-            imageRendering: "pixelated",
-          }}
+          style={{ border: "4px solid #fff", background: "#000", marginTop: 20 }}
         />
-      </div>
-
-      <div style={{ marginTop: 20 }}>
-        <strong>Top Player Score: {gameState.score.top}</strong> | 
-        <strong> Bottom Player Score: {gameState.score.bottom}</strong>
       </div>
     </div>
   );
