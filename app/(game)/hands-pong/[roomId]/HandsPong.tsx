@@ -18,8 +18,8 @@ type GameState = {
 
 const WIDTH = 800;
 const HEIGHT = 600;
-const PADDLE_WIDTH = 140;
-const PADDLE_HEIGHT = 22;
+const PADDLE_WIDTH = 160;
+const PADDLE_HEIGHT = 24;
 const BALL_SIZE = 14;
 
 export default function HandsPong({ roomId }: { roomId: string }) {
@@ -47,6 +47,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           ...prev,
           paddles: {
             ...prev.paddles,
+            // You control one paddle (you can change logic later)
             [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
           },
         }));
@@ -54,14 +55,14 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     },
   });
 
-  const playSound = (freq: number, duration: number, type: "sine" | "square" = "sine") => {
+  const playSound = (freq: number, duration: number) => {
     if (!soundEnabled) return;
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.25;
+    osc.type = "sine"; osc.frequency.value = freq; gain.gain.value = 0.25;
     osc.connect(gain); gain.connect(audioContextRef.current.destination);
     osc.start(); setTimeout(() => osc.stop(), duration);
   };
@@ -94,59 +95,58 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     try {
       const hands = await detector.estimateHands(video);
 
-      if (hands.length > 0) {
-        const landmarks = hands[0].keypoints;
-        const palmX = landmarks[0]?.x || landmarks[9]?.x;
+      hands.forEach((hand: any) => {
+        const landmarks = hand.keypoints;
+        const palmBase = landmarks[9] || landmarks[0]; // middle finger MCP or wrist
 
-        if (palmX !== undefined) {
-          // Improved normalization with proper scaling
+        // Simple palm facing check (rough)
+        const isPalmVisible = Math.abs(landmarks[0].y - landmarks[9].y) < 80; // rough heuristic
+
+        if (palmBase && isPalmVisible) {
           const scaleX = WIDTH / video.videoWidth;
-          const normalizedX = palmX * scaleX;
+          const normalizedX = palmBase.x * scaleX;
           const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, normalizedX - PADDLE_WIDTH / 2));
 
-          publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
+          publish({
+            type: "hand",
+            payload: { x: paddleX, playerId: userId },
+          });
         }
 
-        // Draw aligned & flipped skeleton
-        hands.forEach((hand: any) => {
-          ctx.strokeStyle = "#0f0";
-          ctx.lineWidth = 4;
+        // Draw skeleton
+        ctx.strokeStyle = "#0f0";
+        ctx.lineWidth = 4;
+        const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
 
-          const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
-
-          fingers.forEach(finger => {
-            ctx.beginPath();
-            finger.forEach((idx, j) => {
-              const pt = hand.keypoints[idx];
-              if (!pt) return;
-              const x = WIDTH - (pt.x * (WIDTH / video.videoWidth)); // Proper flip + scale
-              const y = pt.y * (HEIGHT / video.videoHeight);
-              j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-          });
-
-          // Keypoints
-          ctx.fillStyle = "#ff0";
-          hand.keypoints.forEach((pt: any) => {
-            const x = WIDTH - (pt.x * (WIDTH / video.videoWidth));
+        fingers.forEach(finger => {
+          ctx.beginPath();
+          finger.forEach((idx, j) => {
+            const pt = landmarks[idx];
+            if (!pt) return;
+            const x = WIDTH - (pt.x * scaleX);
             const y = pt.y * (HEIGHT / video.videoHeight);
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, Math.PI * 2);
-            ctx.fill();
+            j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
           });
+          ctx.stroke();
         });
-      }
-    } catch (e) {
-      console.warn(e);
-    }
+
+        ctx.fillStyle = "#ff0";
+        landmarks.forEach((pt: any) => {
+          const x = WIDTH - (pt.x * scaleX);
+          const y = pt.y * (HEIGHT / video.videoHeight);
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+    } catch (e) {}
 
     const { ball, score, paddles } = gameState;
 
     // Paddle targets
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.5)";
+    ctx.strokeStyle = "rgba(0,255,255,0.5)";
     ctx.lineWidth = 4;
-    ctx.strokeRect(15, 22, WIDTH - 30, PADDLE_HEIGHT + 20);
+    ctx.strokeRect(15, 25, WIDTH - 30, PADDLE_HEIGHT + 20);
     ctx.strokeRect(15, HEIGHT - 65, WIDTH - 30, PADDLE_HEIGHT + 20);
 
     // Paddles
@@ -160,7 +160,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Center line
+    // Center line & Score
     ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.setLineDash([10, 15]);
     ctx.beginPath();
@@ -169,12 +169,11 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Score
     ctx.fillStyle = "#fff";
     ctx.font = "bold 58px Arial";
     ctx.textAlign = "center";
-    ctx.fillText(score.top.toString(), WIDTH / 2, 115);
-    ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 75);
+    ctx.fillText(score.top.toString(), WIDTH / 2, 110);
+    ctx.fillText(score.bottom.toString(), WIDTH / 2, HEIGHT - 70);
 
     // Physics
     setGameState((prev) => {
@@ -197,14 +196,21 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         playSound(680, 50);
       }
 
-      if (b.y < 0) { s.bottom++; playSound(180, 400, "square"); b.x = WIDTH/2; b.y = HEIGHT/2; b.vx = (Math.random()-0.5)*8; b.vy = 5.5; }
-      if (b.y > HEIGHT) { s.top++; playSound(180, 400, "square"); b.x = WIDTH/2; b.y = HEIGHT/2; b.vx = (Math.random()-0.5)*8; b.vy = -5.5; }
+      if (b.y < 0) { s.bottom++; playSound(180, 400); resetBall(b, 5.5); }
+      if (b.y > HEIGHT) { s.top++; playSound(180, 400); resetBall(b, -5.5); }
 
       return { ball: b, score: s, paddles: p };
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
   }, [detector, isReady, publish, userId, soundEnabled, gameState]);
+
+  const resetBall = (ball: any, vy: number) => {
+    ball.x = WIDTH / 2;
+    ball.y = HEIGHT / 2;
+    ball.vx = (Math.random() - 0.5) * 8;
+    ball.vy = vy;
+  };
 
   const handleVideoReady = () => setIsReady(true);
 
@@ -221,7 +227,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right</p>
+      <p>Your ID: {userId.slice(0,8)}... | Show your palm to control your paddle left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
@@ -235,29 +241,12 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           ref={canvasRef}
           width={WIDTH}
           height={HEIGHT}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            pointerEvents: "none",
-            border: "5px solid #0ff"
-          }}
+          style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", border: "5px solid #0ff" }}
         />
 
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
-          style={{
-            position: "absolute",
-            top: 15,
-            right: 15,
-            padding: "10px 18px",
-            fontSize: "16px",
-            background: "#00000088",
-            color: "white",
-            border: "2px solid #0ff",
-            borderRadius: "6px",
-            zIndex: 20,
-          }}
+          style={{ position: "absolute", top: 15, right: 15, padding: "10px 18px", background: "#00000088", color: "white", border: "2px solid #0ff", borderRadius: "6px", zIndex: 20 }}
         >
           Sound: {soundEnabled ? "ON 🔊" : "OFF 🔇"}
         </button>
