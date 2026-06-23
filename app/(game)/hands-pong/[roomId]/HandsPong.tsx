@@ -26,28 +26,24 @@ const drawHandSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], color
   ctx.lineWidth = 3;
 
   const fingers = [
-    [0, 1, 2, 3, 4],
-    [0, 5, 6, 7, 8],
-    [0, 9, 10, 11, 12],
-    [0, 13, 14, 15, 16],
-    [0, 17, 18, 19, 20],
+    [0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12],
+    [0, 13, 14, 15, 16], [0, 17, 18, 19, 20],
   ];
 
   fingers.forEach((finger) => {
     ctx.beginPath();
     finger.forEach((index, i) => {
-      const point = landmarks[index];
-      if (!point) return;
-      if (i === 0) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
+      const pt = landmarks[index];
+      if (!pt) return;
+      i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
     });
     ctx.stroke();
   });
 
   ctx.fillStyle = "#ff0";
-  landmarks.forEach((point: any) => {
+  landmarks.forEach((pt: any) => {
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
     ctx.fill();
   });
 };
@@ -69,18 +65,15 @@ function GameCanvas({ gameState, onRender }: {
 
       const { ball, score, paddles } = gameState;
 
-      // Paddles
       ctx.fillStyle = "#0ff";
       ctx.fillRect(paddles.top, 30, PADDLE_WIDTH, PADDLE_HEIGHT);
       ctx.fillRect(paddles.bottom, HEIGHT - 50, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-      // Ball
       ctx.fillStyle = "#fff";
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Center line
       ctx.strokeStyle = "rgba(255,255,255,0.4)";
       ctx.setLineDash([10, 10]);
       ctx.beginPath();
@@ -89,7 +82,6 @@ function GameCanvas({ gameState, onRender }: {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Score
       ctx.fillStyle = "#fff";
       ctx.font = "bold 48px Arial";
       ctx.textAlign = "center";
@@ -102,25 +94,12 @@ function GameCanvas({ gameState, onRender }: {
     render();
   }, [gameState, onRender]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={WIDTH}
-      height={HEIGHT}
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        pointerEvents: "none",
-        border: "4px solid #fff",
-      }}
-    />
-  );
+  return <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", border: "4px solid #fff" }} />;
 }
 
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
-  const [isVideoReady, setIsVideoReady] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const detectorRef = useRef<any>(null);
   const animationRef = useRef<number | null>(null);
@@ -132,55 +111,38 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     paddles: { top: WIDTH / 2 - PADDLE_WIDTH / 2, bottom: WIDTH / 2 - PADDLE_WIDTH / 2 },
   });
 
-  const { publish } = useGameRoom<HandMessage>({
-    roomId,
-    onMessage: (msg) => {
-      if (msg.type === "hand") {
-        setGameState((prev) => ({
-          ...prev,
-          paddles: {
-            ...prev.paddles,
-            [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
-          },
-        }));
-      }
-    },
-  });
-
-  const playSound = (frequency: number, duration: number, type: "sine" | "square" = "sine") => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const { publish } = useGameRoom<HandMessage>({ roomId, onMessage: (msg) => {
+    if (msg.type === "hand") {
+      setGameState((prev) => ({
+        ...prev,
+        paddles: {
+          ...prev.paddles,
+          [msg.payload.playerId === userId ? "top" : "bottom"]: msg.payload.x,
+        },
+      }));
     }
+  }});
+
+  const playSound = (freq: number, duration: number, type: "sine" | "square" = "sine") => {
+    if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = audioContextRef.current.createOscillator();
     const gain = audioContextRef.current.createGain();
-    osc.type = type;
-    osc.frequency.value = frequency;
-    gain.gain.value = 0.3;
-    osc.connect(gain);
-    gain.connect(audioContextRef.current.destination);
-    osc.start();
-    setTimeout(() => osc.stop(), duration);
+    osc.type = type; osc.frequency.value = freq; gain.gain.value = 0.3;
+    osc.connect(gain); gain.connect(audioContextRef.current.destination);
+    osc.start(); setTimeout(() => osc.stop(), duration);
   };
 
   const initDetector = useCallback(async () => {
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
     detectorRef.current = await handPoseDetection.createDetector(model, {
-      runtime: "mediapipe",
+      runtime: "tfjs",           // ← Changed from mediapipe
       modelType: "full",
-      maxHands: 2,
-      solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands",
     });
   }, []);
 
   const gameLoop = useCallback(async () => {
     const video = webcamRef.current?.video;
-    if (!video || !detectorRef.current || !isVideoReady) {
-      animationRef.current = requestAnimationFrame(gameLoop);
-      return;
-    }
-
-    // Critical safety check
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
+    if (!video || !detectorRef.current || !isReady || video.videoWidth === 0) {
       animationRef.current = requestAnimationFrame(gameLoop);
       return;
     }
@@ -188,7 +150,6 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     try {
       const hands = await detectorRef.current.estimateHands(video);
 
-      // Send own hand position
       if (hands.length > 0) {
         const landmarks = hands[0].keypoints;
         const palmX = landmarks[0]?.x || landmarks[9]?.x;
@@ -196,17 +157,14 @@ export default function HandsPong({ roomId }: { roomId: string }) {
           const normalizedX = (palmX / video.videoWidth) * WIDTH;
           const paddleX = Math.max(0, Math.min(WIDTH - PADDLE_WIDTH, normalizedX - PADDLE_WIDTH / 2));
 
-          publish({
-            type: "hand",
-            payload: { x: paddleX, playerId: userId },
-          });
+          publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
         }
       }
-    } catch (err) {
-      console.warn("Hand detection error:", err);
+    } catch (e) {
+      console.warn("Detection error:", e);
     }
 
-    // Game physics
+    // Physics
     setGameState((prev) => {
       let { ball, score, paddles } = prev;
       ball.x += ball.vx;
@@ -214,41 +172,35 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
       if (ball.x <= 0 || ball.x >= WIDTH) ball.vx *= -1;
 
-      const topY = 30;
-      const bottomY = HEIGHT - 50;
+      const topY = 30, bottomY = HEIGHT - 50;
 
-      if (ball.y - BALL_SIZE / 2 <= topY + PADDLE_HEIGHT && 
-          ball.y + BALL_SIZE / 2 >= topY &&
+      if (ball.y - BALL_SIZE/2 <= topY + PADDLE_HEIGHT && ball.y + BALL_SIZE/2 >= topY &&
           ball.x >= paddles.top && ball.x <= paddles.top + PADDLE_WIDTH) {
         ball.vy = Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y + BALL_SIZE / 2 >= bottomY && 
-          ball.y - BALL_SIZE / 2 <= bottomY + PADDLE_HEIGHT &&
+      if (ball.y + BALL_SIZE/2 >= bottomY && ball.y - BALL_SIZE/2 <= bottomY + PADDLE_HEIGHT &&
           ball.x >= paddles.bottom && ball.x <= paddles.bottom + PADDLE_WIDTH) {
         ball.vy = -Math.abs(ball.vy) * 1.02;
         playSound(600, 60);
       }
 
-      if (ball.y < 0) {
-        score.bottom++;
-        playSound(200, 300, "square");
-        ball.x = WIDTH / 2; ball.y = HEIGHT / 2;
-        ball.vx = (Math.random() - 0.5) * 8; ball.vy = 5;
-      }
-      if (ball.y > HEIGHT) {
-        score.top++;
-        playSound(200, 300, "square");
-        ball.x = WIDTH / 2; ball.y = HEIGHT / 2;
-        ball.vx = (Math.random() - 0.5) * 8; ball.vy = -5;
-      }
+      if (ball.y < 0) { score.bottom++; playSound(200, 300, "square"); resetBall(ball, 5); }
+      if (ball.y > HEIGHT) { score.top++; playSound(200, 300, "square"); resetBall(ball, -5); }
 
       return { ball, score, paddles };
     });
 
     animationRef.current = requestAnimationFrame(gameLoop);
-  }, [publish, userId, isVideoReady]);
+  }, [publish, userId, isReady]);
+
+  const resetBall = (ball: any, vy: number) => {
+    ball.x = WIDTH / 2;
+    ball.y = HEIGHT / 2;
+    ball.vx = (Math.random() - 0.5) * 8;
+    ball.vy = vy;
+  };
 
   const handleCanvasRender = useCallback((ctx: CanvasRenderingContext2D) => {
     const video = webcamRef.current?.video;
@@ -261,12 +213,9 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     }).catch(() => {});
   }, []);
 
-  // Video ready handler
-  const handleVideoLoad = () => {
+  const handleVideoReady = () => {
     const video = webcamRef.current?.video;
-    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-      setIsVideoReady(true);
-    }
+    if (video && video.videoWidth > 0) setIsReady(true);
   };
 
   useEffect(() => {
@@ -274,33 +223,25 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       animationRef.current = requestAnimationFrame(gameLoop);
     });
 
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
   }, [initDetector, gameLoop]);
 
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0, 8)}... | Move your hand left/right to control paddle</p>
+      <p>Your ID: {userId.slice(0,8)}... | Move hand left/right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
           ref={webcamRef}
           mirrored
-          onLoadedMetadata={handleVideoLoad}
-          style={{
-            width: WIDTH,
-            height: HEIGHT,
-            objectFit: "cover",
-            border: "4px solid #333",
-          }}
+          onLoadedMetadata={handleVideoReady}
+          style={{ width: WIDTH, height: HEIGHT, objectFit: "cover", border: "4px solid #333" }}
         />
-
         <GameCanvas gameState={gameState} onRender={handleCanvasRender} />
       </div>
 
-      {!isVideoReady && <p>Waiting for camera...</p>}
+      {!isReady && <p>Waiting for camera...</p>}
     </div>
   );
 }
