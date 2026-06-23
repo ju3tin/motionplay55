@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { pubnub } from "./client";
+import { pubnub } from "./client1";
 
 type Options<T> = {
   roomId: string;
