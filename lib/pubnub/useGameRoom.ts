@@ -1,25 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { getPubNub } from "./client";
-import { GameMessage } from "./types";
+import { useEffect, useMemo, useRef } from "react";
+import { pubnub } from "./client";
 
-type Options = {
+type Options<T> = {
   roomId: string;
-  userId: string;
-  onMessage?: (message: GameMessage) => void;
+  onMessage: (msg: T) => void;
 };
 
-export function useGameRoom({
-  roomId,
-  userId,
-  onMessage,
-}: Options) {
-  const pubnub = useMemo(
-    () => getPubNub(userId),
-    [userId]
-  );
-
+export function useGameRoom<T>({ roomId, onMessage }: Options<T>) {
+  const channel = `room:${roomId}`;
   const listenerRef = useRef(onMessage);
 
   useEffect(() => {
@@ -27,42 +17,27 @@ export function useGameRoom({
   }, [onMessage]);
 
   useEffect(() => {
-    const channel = `room:${roomId}`;
-
     const listener = {
       message: (event: any) => {
-        const msg = event.message as GameMessage;
-        listenerRef.current?.(msg);
+        listenerRef.current(event.message as T);
       },
     };
 
     pubnub.addListener(listener);
-
-    pubnub.subscribe({
-      channels: [channel],
-    });
+    pubnub.subscribe({ channels: [channel] });
 
     return () => {
       pubnub.removeListener(listener);
-
-      pubnub.unsubscribe({
-        channels: [channel],
-      });
+      pubnub.unsubscribe({ channels: [channel] });
     };
-  }, [pubnub, roomId]);
+  }, [channel]);
 
-  const publish = useCallback(
-    async (message: GameMessage) => {
-      await pubnub.publish({
-        channel: `room:${roomId}`,
-        message,
-      });
-    },
-    [pubnub, roomId]
-  );
-
-  return {
-    publish,
-    channel: `room:${roomId}`,
+  const publish = async (message: T) => {
+    await pubnub.publish({
+      channel,
+      message: message as any,
+    });
   };
+
+  return { publish, channel };
 }
