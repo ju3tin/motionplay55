@@ -11,7 +11,7 @@ type HandMessage = {
 };
 
 type GameState = {
-  ball: { x: number; y: number; vx: number; vy: number; speed: number };
+  ball: { x: number; y: number; vx: number; vy: number };
   score: { top: number; bottom: number };
   paddles: { top: number; bottom: number };
   winner: string | null;
@@ -22,14 +22,13 @@ const HEIGHT = 600;
 const PADDLE_WIDTH = 160;
 const PADDLE_HEIGHT = 24;
 const BALL_SIZE = 14;
-const WIN_SCORE = 2; // Best of 3
+const WIN_SCORE = 2;
 
 export default function HandsPong({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
   const [isReady, setIsReady] = useState(false);
   const [detector, setDetector] = useState<any>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [gameOver, setGameOver] = useState(false);
 
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,7 +36,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
-    ball: { x: WIDTH / 2, y: HEIGHT / 2, vx: 6, vy: 5, speed: 1 },
+    ball: { x: WIDTH / 2, y: HEIGHT / 2, vx: 6, vy: 5 },
     score: { top: 0, bottom: 0 },
     paddles: { top: WIDTH / 2 - PADDLE_WIDTH / 2, bottom: WIDTH / 2 - PADDLE_WIDTH / 2 },
     winner: null,
@@ -70,6 +69,8 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     osc.start(); setTimeout(() => osc.stop(), duration);
   };
 
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
   const initDetector = useCallback(async () => {
     await import("@tensorflow/tfjs-core");
     await import("@tensorflow/tfjs-backend-webgl");
@@ -98,6 +99,11 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     const scaleX = WIDTH / video.videoWidth;
     const scaleY = HEIGHT / video.videoHeight;
 
+    let targetTop = gameState.paddles.top;
+    let targetBottom = gameState.paddles.bottom;
+    let leftTargetActive = false;
+    let rightTargetActive = false;
+
     try {
       const hands = await detector.estimateHands(video);
 
@@ -110,18 +116,23 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 85;
 
         if (palmBase && isPalmVisible) {
-          let targetX = palmBase.x * scaleX;
+          let rawX = palmBase.x * scaleX;
+          let targetX = rawX;
 
-          // FLIPPED TARGET LOGIC
+          // Flipped target logic
           if (isLeftHand) {
-            // Left hand over right target → paddle goes right
-            targetX = WIDTH - targetX;
+            targetX = WIDTH - rawX;           // Left hand → Right side
+            rightTargetActive = true;
           } else {
-            // Right hand over left target → paddle goes left
-            targetX = WIDTH * 0.3 + (WIDTH * 0.4 - targetX);
+            targetX = rawX;                   // Right hand → Left side
+            leftTargetActive = true;
           }
 
           const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, targetX - PADDLE_WIDTH / 2));
+
+          // Assign to player's paddle
+          targetTop = isLeftHand ? paddleX : targetTop;
+          targetBottom = !isLeftHand ? paddleX : targetBottom;
 
           publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
         }
@@ -154,22 +165,67 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       });
     } catch (e) {}
 
+    // Smooth paddle movement
+    setGameState((prev) => {
+      const newTop = lerp(prev.paddles.top, targetTop, 0.28);
+      const newBottom = lerp(prev.paddles.bottom, targetBottom, 0.28);
+
+      let { ball: b, score: s, winner: w } = prev;
+
+      if (w) return prev;
+
+      b.x += b.vx;
+      b.y += b.vy;
+
+      if (b.x <= 0 || b.x >= WIDTH) b.vx *= -1;
+
+      const topY = 30, bottomY = HEIGHT - 50;
+
+      if (b.y - BALL_SIZE/2 <= topY + PADDLE_HEIGHT && b.y + BALL_SIZE/2 >= topY &&
+          b.x >= newTop && b.x <= newTop + PADDLE_WIDTH) {
+        b.vy = Math.abs(b.vy) * 1.04;
+        playSound(680, 50);
+      }
+      if (b.y + BALL_SIZE/2 >= bottomY && b.y - BALL_SIZE/2 <= bottomY + PADDLE_HEIGHT &&
+          b.x >= newBottom && b.x <= newBottom + PADDLE_WIDTH) {
+        b.vy = -Math.abs(b.vy) * 1.04;
+        playSound(680, 50);
+      }
+
+      if (b.y < 0) { s.bottom++; playSound(180, 400); resetBall(b); }
+      if (b.y > HEIGHT) { s.top++; playSound(180, 400); resetBall(b); }
+
+      if (s.top >= WIN_SCORE) w = "Top";
+      if (s.bottom >= WIN_SCORE) w = "Bottom";
+
+      return { 
+        ball: b, 
+        score: s, 
+        paddles: { top: newTop, bottom: newBottom }, 
+        winner: w 
+      };
+    });
+
     const { ball, score, paddles, winner } = gameState;
 
-    // Rectangle Targets
-    ctx.strokeStyle = "#ffff00";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(40, 20, 200, 60);           // Left Target
-    ctx.strokeRect(WIDTH - 240, 20, 200, 60); // Right Target
+    // Targets with glow when active
+    ctx.strokeStyle = leftTargetActive ? "#ffff00" : "#666";
+    ctx.lineWidth = leftTargetActive ? 8 : 4;
+    ctx.strokeRect(40, 20, 200, 60);
 
-    ctx.fillStyle = "rgba(255,255,0,0.1)";
+    ctx.strokeStyle = rightTargetActive ? "#ffff00" : "#666";
+    ctx.lineWidth = rightTargetActive ? 8 : 4;
+    ctx.strokeRect(WIDTH - 240, 20, 200, 60);
+
+    ctx.fillStyle = leftTargetActive ? "rgba(255,255,0,0.25)" : "rgba(255,255,0,0.08)";
     ctx.fillRect(40, 20, 200, 60);
+    ctx.fillStyle = rightTargetActive ? "rgba(255,255,0,0.25)" : "rgba(255,255,0,0.08)";
     ctx.fillRect(WIDTH - 240, 20, 200, 60);
 
     ctx.fillStyle = "#ffff00";
     ctx.font = "bold 18px Arial";
-    ctx.fillText("LEFT TARGET", 90, 55);
-    ctx.fillText("RIGHT TARGET", WIDTH - 190, 55);
+    ctx.fillText("LEFT TARGET", 85, 55);
+    ctx.fillText("RIGHT TARGET", WIDTH - 195, 55);
 
     // Paddles
     ctx.fillStyle = "#00ffff";
@@ -201,55 +257,8 @@ export default function HandsPong({ roomId }: { roomId: string }) {
     if (winner) {
       ctx.fillStyle = "#ff0";
       ctx.font = "bold 48px Arial";
-      ctx.fillText(`${winner.toUpperCase()} WINS!`, WIDTH / 2, HEIGHT / 2);
+      ctx.fillText(`${winner} WINS!`, WIDTH / 2, HEIGHT / 2);
     }
-
-    // Physics + Speed Increase
-    setGameState((prev) => {
-      let { ball: b, score: s, paddles: p, winner: w } = prev;
-
-      if (w) return prev;
-
-      b.x += b.vx;
-      b.y += b.vy;
-
-      if (b.x <= 0 || b.x >= WIDTH) b.vx *= -1;
-
-      const topY = 30, bottomY = HEIGHT - 50;
-
-      let hit = false;
-      if (b.y - BALL_SIZE/2 <= topY + PADDLE_HEIGHT && b.y + BALL_SIZE/2 >= topY &&
-          b.x >= p.top && b.x <= p.top + PADDLE_WIDTH) {
-        b.vy = Math.abs(b.vy) * 1.04;
-        b.vx *= 1.02;
-        hit = true;
-        playSound(680, 50);
-      }
-      if (b.y + BALL_SIZE/2 >= bottomY && b.y - BALL_SIZE/2 <= bottomY + PADDLE_HEIGHT &&
-          b.x >= p.bottom && b.x <= p.bottom + PADDLE_WIDTH) {
-        b.vy = -Math.abs(b.vy) * 1.04;
-        b.vx *= 1.02;
-        hit = true;
-        playSound(680, 50);
-      }
-
-      if (b.y < 0) { 
-        s.bottom++; 
-        playSound(180, 400); 
-        resetBall(b); 
-      }
-      if (b.y > HEIGHT) { 
-        s.top++; 
-        playSound(180, 400); 
-        resetBall(b); 
-      }
-
-      // Best of 3 check
-      if (s.top >= WIN_SCORE) w = "Top";
-      if (s.bottom >= WIN_SCORE) w = "Bottom";
-
-      return { ball: b, score: s, paddles: p, winner: w };
-    });
 
     animationRef.current = requestAnimationFrame(gameLoop);
   }, [detector, isReady, publish, userId, soundEnabled, gameState]);
