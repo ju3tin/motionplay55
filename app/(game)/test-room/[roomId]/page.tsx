@@ -1,9 +1,12 @@
+// app/(game)/test-room/[roomId]/page.tsx
 import TestRoomClient from "./TestRoomClient";
 
-export default function Page({
+export default async function Page({
   params,
 }: {
   params: Promise<{ roomId: string }>;
 }) {
-  return <TestRoomClient params={params} />;
+  const { roomId } = await params;
+
+  return <TestRoomClient roomId={roomId} />;
 }
