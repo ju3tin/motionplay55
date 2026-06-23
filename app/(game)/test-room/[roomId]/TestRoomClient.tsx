@@ -1,35 +1,32 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
-
-type Msg =
-  | { type: "chat"; text: string; userId: string }
-  | { type: "input"; x: number; y: number };
+import { GameMessage } from "@/lib/pubnub/types";
 
 export default function TestRoomClient({
-  params,
+  roomId,
 }: {
-  params: Promise<{ roomId: string }>;
+  roomId: string;
 }) {
-  const { roomId } = use(params);
+  const [userId] = useState(() => crypto.randomUUID());
 
-  const [userId] = useState(() =>
-    crypto.randomUUID()
-  );
-
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<GameMessage[]>([]);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
-  const { publish, channel } = useGameRoom({
+  const { publish, channel } = useGameRoom<GameMessage>({
     roomId,
-    userId,
-    onMessage: (msg: Msg) => {
-      setMessages((prev) => [msg, ...prev]);
+    onMessage: (msg) => {
+      if (msg.type === "chat") {
+        setMessages((prev) => [msg, ...prev]);
+      }
+
+      if (msg.type === "input") {
+        setPos({ x: msg.x, y: msg.y });
+      }
     },
   });
 
-  // mouse move test (real-time sync)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const x = e.clientX;
@@ -49,19 +46,20 @@ export default function TestRoomClient({
   }, [publish]);
 
   return (
-    <div style={{ padding: 20, fontFamily: "sans-serif" }}>
-      <h2>Test Room: {roomId}</h2>
+    <div style={{ padding: 20 }}>
+      <h2>Room: {roomId}</h2>
       <p>User: {userId}</p>
       <p>Channel: {channel}</p>
 
+      {/* moving dot */}
       <div
         style={{
-          width: 10,
-          height: 10,
-          background: "red",
           position: "absolute",
           left: pos.x,
           top: pos.y,
+          width: 10,
+          height: 10,
+          background: "red",
           borderRadius: "50%",
         }}
       />
@@ -80,11 +78,9 @@ export default function TestRoomClient({
         Send Chat
       </button>
 
-      <h3>Messages</h3>
-
-      {messages.map((m, i) => (
-        <pre key={i}>{JSON.stringify(m, null, 2)}</pre>
-      ))}
+      <pre>
+        {JSON.stringify(messages, null, 2)}
+      </pre>
     </div>
   );
 }
