@@ -1,16 +1,10 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useGameRoom } from "@/lib/pubnub/useGameRoom";
 import { GameMessage } from "@/lib/pubnub/types1";
 
-export default function TestRoomClient({
-  roomId,
-}: {
-  roomId: string;
-}) {
+export default function TestRoomClient({ roomId }: { roomId: string }) {
   const [userId] = useState(() => crypto.randomUUID());
-
   const [messages, setMessages] = useState<GameMessage[]>([]);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
@@ -22,7 +16,11 @@ export default function TestRoomClient({
       }
 
       if (msg.type === "input") {
-        setPos({ x: msg.x, y: msg.y });
+        // ✅ Fixed: Use payload instead of direct properties
+        setPos({ 
+          x: msg.payload.x, 
+          y: msg.payload.y 
+        });
       }
     },
   });
@@ -31,13 +29,12 @@ export default function TestRoomClient({
     const handler = (e: MouseEvent) => {
       const x = e.clientX;
       const y = e.clientY;
-
       setPos({ x, y });
 
       publish({
         type: "input",
-        x,
-        y,
+        // ✅ You should also send payload here for consistency
+        payload: { x, y },
       });
     };
 
@@ -65,7 +62,6 @@ export default function TestRoomClient({
       />
 
       <hr />
-
       <button
         onClick={() =>
           publish({
@@ -78,9 +74,7 @@ export default function TestRoomClient({
         Send Chat
       </button>
 
-      <pre>
-        {JSON.stringify(messages, null, 2)}
-      </pre>
+      <pre>{JSON.stringify(messages, null, 2)}</pre>
     </div>
   );
 }
