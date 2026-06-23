@@ -116,29 +116,26 @@ export default function HandsPong({ roomId }: { roomId: string }) {
         const isPalmVisible = palmBase && Math.abs(landmarks[0].y - landmarks[9].y) < 85;
 
         if (palmBase && isPalmVisible) {
-          let rawX = palmBase.x * scaleX;
-          let targetX = rawX;
+          const rawX = palmBase.x * scaleX;
+          let paddleX = rawX;
 
-          // Flipped target logic
           if (isLeftHand) {
-            targetX = WIDTH - rawX;           // Left hand → Right side
-            rightTargetActive = true;
-          } else {
-            targetX = rawX;                   // Right hand → Left side
+            // Left hand over Left Target
             leftTargetActive = true;
+            paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, rawX - PADDLE_WIDTH / 2));
+            targetTop = paddleX;
+          } else {
+            // Right hand over Right Target
+            rightTargetActive = true;
+            paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, rawX - PADDLE_WIDTH / 2));
+            targetBottom = paddleX;
           }
-
-          const paddleX = Math.max(20, Math.min(WIDTH - PADDLE_WIDTH - 20, targetX - PADDLE_WIDTH / 2));
-
-          // Assign to player's paddle
-          targetTop = isLeftHand ? paddleX : targetTop;
-          targetBottom = !isLeftHand ? paddleX : targetBottom;
 
           publish({ type: "hand", payload: { x: paddleX, playerId: userId } });
         }
 
         // Draw skeleton
-        ctx.strokeStyle = isLeftHand ? "#f0f" : "#0f0";
+        ctx.strokeStyle = isLeftHand ? "#0f0" : "#f0f";
         ctx.lineWidth = 4;
         const fingers = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
 
@@ -165,10 +162,10 @@ export default function HandsPong({ roomId }: { roomId: string }) {
       });
     } catch (e) {}
 
-    // Smooth paddle movement
+    // Smooth paddle sliding
     setGameState((prev) => {
-      const newTop = lerp(prev.paddles.top, targetTop, 0.28);
-      const newBottom = lerp(prev.paddles.bottom, targetBottom, 0.28);
+      const newTop = lerp(prev.paddles.top, targetTop, 0.32);
+      const newBottom = lerp(prev.paddles.bottom, targetBottom, 0.32);
 
       let { ball: b, score: s, winner: w } = prev;
 
@@ -208,18 +205,18 @@ export default function HandsPong({ roomId }: { roomId: string }) {
 
     const { ball, score, paddles, winner } = gameState;
 
-    // Targets with glow when active
-    ctx.strokeStyle = leftTargetActive ? "#ffff00" : "#666";
+    // Targets with glow
+    ctx.strokeStyle = leftTargetActive ? "#00ff00" : "#666";
     ctx.lineWidth = leftTargetActive ? 8 : 4;
     ctx.strokeRect(40, 20, 200, 60);
 
-    ctx.strokeStyle = rightTargetActive ? "#ffff00" : "#666";
+    ctx.strokeStyle = rightTargetActive ? "#00ff00" : "#666";
     ctx.lineWidth = rightTargetActive ? 8 : 4;
     ctx.strokeRect(WIDTH - 240, 20, 200, 60);
 
-    ctx.fillStyle = leftTargetActive ? "rgba(255,255,0,0.25)" : "rgba(255,255,0,0.08)";
+    ctx.fillStyle = leftTargetActive ? "rgba(0,255,0,0.3)" : "rgba(255,255,0,0.08)";
     ctx.fillRect(40, 20, 200, 60);
-    ctx.fillStyle = rightTargetActive ? "rgba(255,255,0,0.25)" : "rgba(255,255,0,0.08)";
+    ctx.fillStyle = rightTargetActive ? "rgba(0,255,0,0.3)" : "rgba(255,255,0,0.08)";
     ctx.fillRect(WIDTH - 240, 20, 200, 60);
 
     ctx.fillStyle = "#ffff00";
@@ -285,7 +282,7 @@ export default function HandsPong({ roomId }: { roomId: string }) {
   return (
     <div style={{ textAlign: "center", padding: 20, background: "#111", color: "white", minHeight: "100vh" }}>
       <h1>Hands Pong — Best of 3 — Room: {roomId}</h1>
-      <p>Your ID: {userId.slice(0,8)}... | Left Hand on Right Target → Paddle Right | Right Hand on Left Target → Paddle Left</p>
+      <p>Your ID: {userId.slice(0,8)}... | Left Hand on Left Target → Paddle Left | Right Hand on Right Target → Paddle Right</p>
 
       <div style={{ position: "relative", display: "inline-block" }}>
         <Webcam
