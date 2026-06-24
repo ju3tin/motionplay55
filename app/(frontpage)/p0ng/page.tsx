@@ -14,7 +14,7 @@ export default function GamePage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const connectWebSocket = () => {
-    const socket = new WebSocket('wss://node-gameserver.onrender.com/');
+    const socket = new WebSocket('wss://gameserver1-kkmk.onrender.com/');
 
     socket.onopen = () => {
       setIsConnected(true);
