@@ -1,7 +1,7 @@
 // app/api/health/route.ts
 export async function GET() {
   try {
-    const response = await fetch('https://node-gameserver.onrender.com/health', {
+    const response = await fetch('https://gameserver1-kkmk.onrender.com/health', {
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-cache',
