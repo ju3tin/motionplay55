@@ -2,10 +2,8 @@
 import { useState } from 'react';
 
 interface Message {
-  event: string;
   userId?: string;
   message?: string;
-  timestamp?: number;
   fromAdmin?: boolean;
 }
 
@@ -34,7 +32,7 @@ export default function GameRoom({
   isAdmin,
   onSendReady,
   onSendMessage,
-  onLeave
+  onLeave,
 }: GameRoomProps) {
   const [message, setMessage] = useState('');
 
@@ -44,7 +42,7 @@ export default function GameRoom({
         event: "chat",
         room,
         userId: "You",
-        message: message.trim()
+        message: message.trim(),
       });
       setMessage('');
     }
@@ -54,41 +52,40 @@ export default function GameRoom({
     <div className="max-w-4xl mx-auto p-4">
       <div className="bg-gray-900 p-6 rounded-2xl mb-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Room: <span className="text-blue-400">{room}</span></h1>
-          <button 
+          <h1 className="text-3xl font-bold">
+            Room: <span className="text-blue-400">{room}</span>
+          </h1>
+          <button
             onClick={onLeave}
-            className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-xl font-medium transition"
+            className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-xl font-medium"
           >
             Leave Room
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-6 text-lg">
+        <div className="flex flex-wrap gap-6 text-lg mb-4">
           <div>Players: <span className="font-bold text-green-400">{players}/{maxPlayers}</span></div>
           <div>Ready: <span className="font-bold text-yellow-400">{readyCount}/{players}</span></div>
-          <div className="capitalize">Status: <span className="font-semibold">{status}</span></div>
+          <div>Status: <span className="capitalize font-semibold">{status}</span></div>
         </div>
 
         {countdown !== null && (
-          <div className="text-5xl font-bold text-red-500 mt-6 text-center">
+          <div className="text-5xl font-bold text-red-500 text-center mt-6">
             Starting in {countdown}...
           </div>
         )}
       </div>
 
-      {/* Ready Button */}
       {status === 'waiting' && (
         <button
           onClick={onSendReady}
           className="w-full bg-purple-600 hover:bg-purple-700 py-5 text-xl font-bold rounded-2xl mb-8 transition"
         >
-          {readyCount === players && players >= 2 
-            ? "Waiting for others..." 
-            : "I'm Ready ✓"}
+          {readyCount === players && players >= 2 ? "Waiting for others..." : "I'm Ready"}
         </button>
       )}
 
-      {/* Chat Area */}
+      {/* Chat */}
       <div className="bg-gray-900 rounded-2xl p-4 h-[500px] flex flex-col">
         <div className="flex-1 overflow-y-auto mb-4 space-y-3 pr-2">
           {messages.map((msg, i) => (
@@ -110,7 +107,7 @@ export default function GameRoom({
             placeholder="Type a message..."
             className="flex-1 p-4 bg-gray-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button 
+          <button
             onClick={handleSend}
             className="bg-blue-600 hover:bg-blue-700 px-10 rounded-xl font-semibold"
           >
