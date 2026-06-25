@@ -1,67 +1,60 @@
 "use client";
 
-
 import {
-
-useEffect,
-
-useRef,
-
-useState
-
+  useEffect,
+  useRef,
+  useState
 } from "react";
 
-
-import {POSES} from "./poses";
-
+import { POSES } from "./poses";
 
 import {
-
-calculatePoseScore
-
+  calculatePoseScore,
+  Keypoint
 } from "@/lib/poseMatcher";
 
 
+interface Props {
 
+  roomId:string;
 
-interface Props{
+  userId:string;
 
-roomId:string;
+  players:number;
 
-userId:string;
+  send:(data:any)=>void;
 
-send:(data:any)=>void;
-
-gameActive:boolean;
-
-players:number;
+  gameActive:boolean;
 
 }
 
 
 
+const BONES: [number,number][] = [
 
+  [0,1],
+  [0,2],
+  [1,3],
+  [2,4],
 
-const BONES:any=[
+  [5,6],
 
-[5,7],
-[7,9],
+  [5,7],
+  [7,9],
 
-[6,8],
-[8,10],
+  [6,8],
+  [8,10],
 
-[5,6],
+  [5,11],
+  [6,12],
 
-[5,11],
-[6,12],
+  [11,12],
 
-[11,12],
+  [11,13],
+  [13,15],
 
-[11,13],
-[13,15],
-
-[12,14],
-[14,16]
+  [12,14],
+  [14,16]
 
 ];
 
@@ -71,49 +64,62 @@ const BONES:any=[
 
 export default function PoseMatchGame({
 
-roomId,
+  roomId,
 
-userId,
+  userId,
 
-send,
+  players,
 
-gameActive
+  send,
+
+  gameActive
 
 }:Props){
 
 
 
 const videoRef =
-useRef<any>(null);
+useRef<HTMLVideoElement|null>(null);
+
 
 const canvasRef =
-useRef<any>(null);
+useRef<HTMLCanvasElement|null>(null);
 
 
 const detector =
 useRef<any>(null);
 
 
+
 const points =
-useRef<any[]>([]);
+useRef<Keypoint[]>([]);
 
 
 
-const [score,setScore]=useState(0);
+const [score,setScore] =
+useState(0);
 
 
-const [time,setTime]=useState(30);
+const [time,setTime] =
+useState(30);
 
 
-const [target,setTarget]=
+
+const [target,setTarget] =
 useState<any>(
-POSES.myPose
+POSES.tPose
 );
 
 
 
+const [loaded,setLoaded] =
+useState(false);
 
 
+
+
+
+// LOAD TENSORFLOW
 
 useEffect(()=>{
 
@@ -125,7 +131,10 @@ const tf =
 await import("@tensorflow/tfjs");
 
 
-await import("@tensorflow/tfjs-backend-webgl");
+await import(
+"@tensorflow/tfjs-backend-webgl"
+);
+
 
 
 await tf.setBackend("webgl");
@@ -136,7 +145,9 @@ await tf.ready();
 
 
 const pd =
-await import("@tensorflow-models/pose-detection");
+await import(
+"@tensorflow-models/pose-detection"
+);
 
 
 
@@ -160,12 +171,14 @@ pd.movenet
 
 
 
+setLoaded(true);
+
+
 }
 
 
 
 load();
-
 
 
 },[]);
@@ -177,6 +190,82 @@ load();
 
 
 
+
+// START GAME CAMERA
+
+useEffect(()=>{
+
+
+if(
+!gameActive ||
+!loaded
+)
+return;
+
+
+
+async function start(){
+
+
+
+const stream =
+
+await navigator.mediaDevices.getUserMedia({
+
+video:{
+
+width:1280,
+
+height:720,
+
+facingMode:"user"
+
+}
+
+});
+
+
+
+if(videoRef.current){
+
+
+videoRef.current.srcObject =
+stream;
+
+
+await videoRef.current.play();
+
+
+detect();
+
+
+}
+
+
+
+}
+
+
+
+start();
+
+
+
+},[
+gameActive,
+loaded
+]);
+
+
+
+
+
+
+
+
+
+// PICK RANDOM POSE
+
 useEffect(()=>{
 
 
@@ -184,67 +273,87 @@ if(!gameActive)
 return;
 
 
-async function camera(){
 
-
-const stream =
-
-await navigator.mediaDevices.getUserMedia({
-
-video:true
-
-});
-
-
-videoRef.current.srcObject=stream;
-
-
-await videoRef.current.play();
+const names =
+Object.keys(POSES);
 
 
 
-loop();
+const selected =
 
-
-}
-
-
-
-camera();
-
-
-
-},[gameActive]);
+names[
+Math.floor(
+Math.random()*names.length
+)
+];
 
 
 
+setTarget(
+
+POSES[
+selected as keyof typeof POSES
+]
+
+);
+
+
+
+setTime(30);
+
+
+
+},[
+gameActive
+]);
 
 
 
 
-async function loop(){
+
+
+
+
+
+async function detect(){
+
 
 
 while(true){
 
 
-const poses=
+
+if(
+
+videoRef.current &&
+
+detector.current
+
+){
+
+
+
+const result =
 
 await detector.current
 .estimatePoses(
+
 videoRef.current
+
 );
 
 
 
-if(poses.length){
+if(result.length){
+
+
 
 points.current =
-poses[0].keypoints;
+result[0].keypoints;
 
 
 
-const s =
+const newScore =
 
 calculatePoseScore(
 
@@ -256,7 +365,7 @@ target.points
 
 
 
-setScore(s);
+setScore(newScore);
 
 
 
@@ -268,7 +377,7 @@ roomId,
 
 userId,
 
-score:s
+score:newScore
 
 });
 
@@ -277,8 +386,15 @@ score:s
 }
 
 
+
+}
+
+
+
 await new Promise(r=>
+
 setTimeout(r,100)
+
 );
 
 
@@ -286,6 +402,7 @@ setTimeout(r,100)
 }
 
 
+
 }
 
 
@@ -295,6 +412,8 @@ setTimeout(r,100)
 
 
 
+
+// TIMER
 
 useEffect(()=>{
 
@@ -304,10 +423,43 @@ return;
 
 
 
-const t=setInterval(()=>{
+const timer =
+
+setInterval(()=>{
 
 
-setTime(x=>x-1);
+setTime(t=>{
+
+
+if(t<=1){
+
+
+clearInterval(timer);
+
+
+
+send({
+
+event:"pose-finished",
+
+roomId,
+
+userId
+
+});
+
+
+
+return 0;
+
+}
+
+
+
+return t-1;
+
+
+});
 
 
 
@@ -315,11 +467,13 @@ setTime(x=>x-1);
 
 
 
-return()=>clearInterval(t);
+return()=>clearInterval(timer);
 
 
 
-},[gameActive]);
+},[
+gameActive
+]);
 
 
 
@@ -329,6 +483,7 @@ return()=>clearInterval(t);
 
 
 
+// DRAW
 
 useEffect(()=>{
 
@@ -337,8 +492,44 @@ const canvas =
 canvasRef.current;
 
 
+const video =
+videoRef.current;
+
+
+
+if(
+!canvas ||
+!video
+)
+return;
+
+
+
 const ctx =
 canvas.getContext("2d");
+
+
+
+if(!ctx)
+return;
+
+
+
+function resize(){
+
+canvas.width =
+window.innerWidth;
+
+
+canvas.height =
+window.innerHeight;
+
+
+}
+
+
+
+resize();
 
 
 
@@ -349,14 +540,14 @@ requestAnimationFrame(draw);
 
 
 
-if(!videoRef.current)
+if(
+video.readyState < 2
+)
 return;
 
 
 
-ctx.drawImage(
-
-videoRef.current,
+ctx.clearRect(
 
 0,
 
@@ -370,35 +561,201 @@ canvas.height
 
 
 
-const k=points.current;
+
+
+// CAMERA
+
+ctx.save();
+
+
+ctx.translate(
+canvas.width,
+0
+);
+
+
+ctx.scale(
+-1,
+1
+);
 
 
 
-ctx.strokeStyle="#00ffcc";
+ctx.drawImage(
 
-ctx.lineWidth=6;
+video,
 
+0,
+
+0,
+
+canvas.width,
+
+canvas.height
+
+);
+
+
+
+ctx.restore();
+
+
+
+
+
+
+const k =
+points.current;
+
+
+
+// PLAYER SKELETON
+
+ctx.strokeStyle =
+"#00ffcc";
+
+
+ctx.lineWidth = 8;
 
 
 BONES.forEach(([a,b])=>{
 
 
-if(!k[a]||!k[b])
+const A =
+k[a];
+
+
+const B =
+k[b];
+
+
+
+if(
+!A ||
+!B
+)
 return;
 
 
 
 ctx.beginPath();
 
-ctx.moveTo(k[a].x,k[a].y);
 
-ctx.lineTo(k[b].x,k[b].y);
+ctx.moveTo(
+
+canvas.width-A.x,
+
+A.y
+
+);
+
+
+
+ctx.lineTo(
+
+canvas.width-B.x,
+
+B.y
+
+);
+
+
 
 ctx.stroke();
 
 
 
 });
+
+
+
+
+
+
+
+
+// TARGET GHOST
+
+ctx.globalAlpha=.35;
+
+
+ctx.strokeStyle="#ff0066";
+
+
+ctx.lineWidth=10;
+
+
+
+
+function mapTarget(p:number[]){
+
+return {
+
+x:
+
+canvas.width/2 +
+
+p[0]*120,
+
+
+y:
+
+canvas.height/2 +
+
+p[1]*120
+
+
+};
+
+}
+
+
+
+
+BONES.forEach(([a,b])=>{
+
+
+const A =
+mapTarget(
+target.points[a]
+);
+
+
+
+const B =
+mapTarget(
+target.points[b]
+);
+
+
+
+ctx.beginPath();
+
+
+
+ctx.moveTo(
+A.x,
+A.y
+);
+
+
+
+ctx.lineTo(
+B.x,
+B.y
+);
+
+
+
+ctx.stroke();
+
+
+
+});
+
+
+
+ctx.globalAlpha=1;
 
 
 
@@ -410,7 +767,11 @@ draw();
 
 
 
-},[]);
+},[
+target
+]);
+
+
 
 
 
@@ -421,11 +782,30 @@ draw();
 
 return (
 
-<div>
+<div
+
+style={{
+
+width:"100vw",
+
+height:"100vh",
+
+background:"#000",
+
+position:"relative"
+
+}}
+
+>
+
 
 <video
 
 ref={videoRef}
+
+muted
+
+playsInline
 
 style={{
 
@@ -436,43 +816,66 @@ display:"none"
 />
 
 
+
 <canvas
 
 ref={canvasRef}
 
-width={1280}
+style={{
 
-height={720}
+width:"100%",
+
+height:"100%"
+
+}}
 
 />
 
 
 
-<h1>
-
-TIME {time}
-
-</h1>
 
 
-<h1>
+<div
 
-MATCH {score}%
+style={{
 
-</h1>
+position:"absolute",
 
+top:20,
 
-<h2>
+left:20,
 
-{target.name}
+color:"#fff",
 
-</h2>
+fontSize:30,
+
+fontFamily:"monospace"
+
+}}
+
+>
+
+TIME: {time}
+
+<br/>
+
+MATCH: {score}%
+
+<br/>
+
+PLAYERS: {players}
+
+<br/>
+
+TARGET: {target.name}
+
+</div>
+
 
 
 </div>
 
 );
-
 
 
 }
