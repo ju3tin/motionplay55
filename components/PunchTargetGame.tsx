@@ -7,9 +7,6 @@ import React, {
   useCallback,
 } from "react";
 
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
 export interface Player {
   id: string;
   name?: string;
@@ -41,10 +38,7 @@ interface Target {
 
 type GameState = "idle" | "loading" | "playing" | "ended";
 
-// ─────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────
-export default function PoseMatchGame({
+export default function PunchTargetGame({
   roomId,
   userId,
   players,
@@ -66,14 +60,14 @@ export default function PoseMatchGame({
   const comboRef = useRef(0);
   const idRef = useRef(0);
   const isHost = useRef(false);
-  const isInitialized = useRef(false);
 
   const [state, setState] = useState<GameState>("idle");
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [time, setTime] = useState(GAME_DURATION);
+  const [error, setError] = useState<string | null>(null);
 
-  // Host detection
+  // Host selection
   useEffect(() => {
     if (!players.length) return;
     const sorted = [...players].sort((a, b) => a.id.localeCompare(b.id));
@@ -81,9 +75,11 @@ export default function PoseMatchGame({
   }, [players, userId]);
 
   const loadModel = useCallback(async () => {
-    if (detectorRef.current) return;
+    if (detectorRef.current) return true;
     try {
       setState("loading");
+      setError(null);
+
       const tf = await import("@tensorflow/tfjs");
       await import("@tensorflow/tfjs-backend-webgl");
       await tf.setBackend("webgl");
@@ -94,10 +90,14 @@ export default function PoseMatchGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-      console.log("✅ Model loaded");
-    } catch (err) {
-      console.error("Model load failed:", err);
+
+      console.log("✅ Pose model loaded");
+      return true;
+    } catch (err: any) {
+      console.error("Model load error:", err);
+      setError("Failed to load AI model. Please refresh.");
       setState("idle");
+      return false;
     }
   }, []);
 
@@ -110,8 +110,11 @@ export default function PoseMatchGame({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      return true;
     } catch (err) {
-      console.error("Camera failed:", err);
+      console.error("Camera error:", err);
+      setError("Camera access denied or unavailable.");
+      return false;
     }
   }, []);
 
@@ -120,7 +123,12 @@ export default function PoseMatchGame({
     send({
       type: "TARGET",
       roomId,
-      target: { id: idRef.current++, x: Math.random(), y: Math.random(), r: 40 },
+      target: {
+        id: idRef.current++,
+        x: Math.random(),
+        y: Math.random(),
+        r: 40,
+      },
     });
   }, [send, roomId]);
 
@@ -143,14 +151,20 @@ export default function PoseMatchGame({
     });
 
     if (didHit) {
-      comboRef.current = Math.min(comboRef.current + 1, 30);
+      comboRef.current++;
       const points = 100 + comboRef.current * 15;
       scoreRef.current += points;
 
       setScore(scoreRef.current);
       setCombo(comboRef.current);
 
-      send({ type: "SCORE", roomId, userId, score: scoreRef.current, combo: comboRef.current });
+      send({
+        type: "SCORE",
+        roomId,
+        userId,
+        score: scoreRef.current,
+        combo: comboRef.current,
+      });
     }
   }, [send, roomId, userId]);
 
@@ -182,19 +196,20 @@ export default function PoseMatchGame({
         }
       });
     } catch (e) {
-      console.error(e);
+      console.error("Detection error:", e);
     }
 
     rafDetectRef.current = requestAnimationFrame(detect);
   }, [hitTarget, state]);
 
-  // Main Game Control
+  // Game Start
   useEffect(() => {
-    if (!gameActive || isInitialized.current) return;
+    if (!gameActive) {
+      setState("idle");
+      return;
+    }
 
-    isInitialized.current = true;
-
-    const initGame = async () => {
+    const init = async () => {
       targetsRef.current = [];
       scoreRef.current = 0;
       comboRef.current = 0;
@@ -203,10 +218,15 @@ export default function PoseMatchGame({
       setScore(0);
       setCombo(0);
       setTime(GAME_DURATION);
-      setState("playing");
+      setError(null);
 
-      await loadModel();
-      await startCamera();
+      const modelOk = await loadModel();
+      if (!modelOk) return;
+
+      const cameraOk = await startCamera();
+      if (!cameraOk) return;
+
+      setState("playing");
       detect();
 
       if (isHost.current) {
@@ -224,16 +244,15 @@ export default function PoseMatchGame({
       }, 1000);
     };
 
-    initGame();
+    init();
 
     return () => {
-      isInitialized.current = false;
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [gameActive, loadModel, startCamera, detect, spawnTarget]);
 
-  // Render Loop
+  // Render loop
   useEffect(() => {
     if (state !== "playing") return;
 
@@ -250,7 +269,6 @@ export default function PoseMatchGame({
 
       canvas.width = width;
       canvas.height = height;
-
       ctx.clearRect(0, 0, width, height);
 
       const now = Date.now();
@@ -282,15 +300,15 @@ export default function PoseMatchGame({
     };
   }, [state]);
 
-  const endGame = useCallback(() => {
+  const endGame = () => {
     setState("ended");
     if (rafDetectRef.current) cancelAnimationFrame(rafDetectRef.current);
     if (rafRenderRef.current) cancelAnimationFrame(rafRenderRef.current);
     if (spawnRef.current) clearInterval(spawnRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
-  }, []);
+  };
 
-  // Final Cleanup
+  // Cleanup
   useEffect(() => {
     return () => {
       if (rafDetectRef.current) cancelAnimationFrame(rafDetectRef.current);
@@ -299,18 +317,55 @@ export default function PoseMatchGame({
       if (timerRef.current) clearInterval(timerRef.current);
 
       if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+        (videoRef.current.srcObject as MediaStream)
+          .getTracks()
+          .forEach((t) => t.stop());
       }
     };
   }, []);
 
   const leaderboard = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
+  if (error) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "red" }}>
+        <h2>Error</h2>
+        <p>{error}</p>
+        <button onClick={() => window.location.reload()}>Reload Page</button>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: "100%", height: "100vh", background: "#090914", position: "relative", overflow: "hidden", color: "#fff" }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100vh",
+        background: "#090914",
+        position: "relative",
+        overflow: "hidden",
+        color: "#fff",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
       {/* HUD */}
       {state === "playing" && (
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, display: "flex", justifyContent: "center", gap: 50, padding: 16, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", fontSize: "1.5rem", fontWeight: 700 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            display: "flex",
+            justifyContent: "center",
+            gap: 50,
+            padding: 16,
+            background: "rgba(0,0,0,0.7)",
+            fontSize: "1.5rem",
+            fontWeight: 700,
+          }}
+        >
           <div>⏱ {`00:${String(time).padStart(2, "0")}`}</div>
           <div>⚡ {combo}</div>
           <div>🏆 {score}</div>
@@ -319,7 +374,18 @@ export default function PoseMatchGame({
 
       {/* Leaderboard */}
       {state === "playing" && (
-        <div style={{ position: "absolute", top: 90, right: 20, zIndex: 30, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 210 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 90,
+            right: 20,
+            zIndex: 30,
+            background: "rgba(0,0,0,0.6)",
+            padding: 16,
+            borderRadius: 12,
+            minWidth: 210,
+          }}
+        >
           <h3>Players</h3>
           {leaderboard.map((p) => (
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", margin: "4px 0" }}>
@@ -336,34 +402,82 @@ export default function PoseMatchGame({
           autoPlay
           muted
           playsInline
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.28 }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: "scaleX(-1)",
+            opacity: 0.28,
+          }}
         />
-        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
+        <canvas
+          ref={canvasRef}
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
 
         {/* Idle */}
         {state === "idle" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)" }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.8)",
+            }}
+          >
             <div style={{ textAlign: "center" }}>
               <h1>🥊 Punch Targets</h1>
-              <p>Waiting for host to start...</p>
+              <p>Waiting for host to start the game...</p>
             </div>
           </div>
         )}
 
         {/* Loading */}
         {state === "loading" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.9)" }}>
-            <h1>Loading AI Model...</h1>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.9)",
+            }}
+          >
+            <h1>Loading AI Model... (this may take 10-20 seconds)</h1>
           </div>
         )}
 
         {/* Ended */}
         {state === "ended" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)" }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.85)",
+            }}
+          >
             <div style={{ textAlign: "center", background: "#151528", padding: 50, borderRadius: 20 }}>
               <h1>Game Over</h1>
               <div style={{ fontSize: "6rem", fontWeight: 900, color: "#00d4ff" }}>{score}</div>
-              <button onClick={() => setState("idle")} style={{ marginTop: 20, padding: "14px 40px", background: "#0066ff", color: "white", border: "none", borderRadius: 12 }}>
+              <button
+                onClick={() => setState("idle")}
+                style={{
+                  marginTop: 20,
+                  padding: "14px 40px",
+                  background: "#0066ff",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 12,
+                }}
+              >
                 Exit
               </button>
             </div>
