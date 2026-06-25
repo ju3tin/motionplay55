@@ -54,7 +54,7 @@ export default function PunchTargetGame({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const detectorRef = useRef<any>(null);
-  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const detectionRafRef = useRef<number | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -91,7 +91,7 @@ export default function PunchTargetGame({
     isHostRef.current = sorted[0].id === userId;
   }, [playersList, userId]);
 
-  // Load TensorFlow model
+  // Optimized Model Loading
   const loadModel = useCallback(async () => {
     if (detectorRef.current) return true;
 
@@ -103,12 +103,16 @@ export default function PunchTargetGame({
       await tf.ready();
 
       const pd = await import("@tensorflow-models/pose-detection");
+
       detectorRef.current = await pd.createDetector(
         pd.SupportedModels.MoveNet,
-        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
+        {
+          modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          enableSmoothing: true,
+        }
       );
 
-      console.log("✅ Model Loaded");
+      console.log("✅ MoveNet Lightning + Smoothing Loaded");
       setLoaded(true);
       return true;
     } catch (err) {
@@ -137,7 +141,7 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // Receive targets from host
+  // Receive targets
   useEffect(() => {
     const listener = (e: any) => {
       const data = e.detail;
@@ -168,6 +172,7 @@ export default function PunchTargetGame({
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
+
     targetsRef.current = targetsRef.current.map(t => {
       if (t.hit) return t;
       const area = areaRef.current;
@@ -203,21 +208,39 @@ export default function PunchTargetGame({
 
   const endGame = useCallback(() => {
     setGameState("ended");
-    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+    if (detectionRafRef.current) cancelAnimationFrame(detectionRafRef.current);
     if (spawnRef.current) clearInterval(spawnRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     setFinalScore(scoreRef.current);
     setFinalCombo(maxComboRef.current);
   }, []);
 
+  // === OPTIMIZED DETECTION LOOP (RAF + Throttling) ===
   const startDetection = useCallback(() => {
-    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+    if (detectionRafRef.current) cancelAnimationFrame(detectionRafRef.current);
 
-    detectionIntervalRef.current = setInterval(async () => {
-      if (!detectorRef.current || !videoRef.current || gameState !== "playing") return;
+    let lastDetection = 0;
+    const targetInterval = 45; // ~22 FPS detection — excellent balance
+
+    const detectLoop = async (timestamp: number) => {
+      if (gameState !== "playing" || !detectorRef.current || !videoRef.current) {
+        detectionRafRef.current = requestAnimationFrame(detectLoop);
+        return;
+      }
+
+      if (timestamp - lastDetection < targetInterval) {
+        detectionRafRef.current = requestAnimationFrame(detectLoop);
+        return;
+      }
+
+      lastDetection = timestamp;
 
       try {
-        const poses = await detectorRef.current.estimatePoses(videoRef.current);
+        const poses = await detectorRef.current.estimatePoses(videoRef.current, {
+          maxPoses: 1,
+          flipHorizontal: true,
+        });
+
         if (poses?.length) {
           const pose = poses[0];
           const area = areaRef.current;
@@ -227,6 +250,7 @@ export default function PunchTargetGame({
           const height = area.clientHeight;
           const videoW = videoRef.current.videoWidth || 640;
           const videoH = videoRef.current.videoHeight || 480;
+
           const scaleX = width / videoW;
           const scaleY = height / videoH;
 
@@ -242,10 +266,14 @@ export default function PunchTargetGame({
       } catch (e) {
         console.error("Detection error:", e);
       }
-    }, 80);
+
+      detectionRafRef.current = requestAnimationFrame(detectLoop);
+    };
+
+    detectionRafRef.current = requestAnimationFrame(detectLoop);
   }, [checkHit, gameState]);
 
-  // Main game initialization
+  // Main initialization
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -285,14 +313,14 @@ export default function PunchTargetGame({
     init();
 
     return () => {
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (detectionRafRef.current) cancelAnimationFrame(detectionRafRef.current);
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [gameActive, loadModel, startCamera]);
 
-  // Start detection + spawning when playing
+  // Game systems when playing
   useEffect(() => {
     if (gameState !== "playing") return;
 
@@ -313,7 +341,7 @@ export default function PunchTargetGame({
     }, 1000);
 
     return () => {
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (detectionRafRef.current) cancelAnimationFrame(detectionRafRef.current);
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -328,6 +356,7 @@ export default function PunchTargetGame({
     if (!canvas || !area) return;
 
     const ctx = canvas.getContext("2d")!;
+
     const render = () => {
       const width = area.clientWidth;
       const height = area.clientHeight;
