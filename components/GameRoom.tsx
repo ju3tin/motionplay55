@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import PoseMatchGame from "@/components/PoseMatchGame";
 
 export default function GameRoom({
   currentGameId,
@@ -52,6 +53,31 @@ export default function GameRoom({
           </div>
         )}
       </div>
+
+      {status === "playing" && (
+  <PoseMatchGame
+
+    roomId={currentGameId}
+
+    userId={userId}
+
+    players={players}
+
+    onScore={(score)=>{
+
+      socket.emit(
+        "pose-score",
+        {
+          roomId: currentGameId,
+          userId,
+          score
+        }
+      );
+
+    }}
+
+  />
+)}
 
       {status === 'waiting' && (
         <button
