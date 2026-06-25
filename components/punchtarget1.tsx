@@ -47,7 +47,7 @@ type GameState = "idle" | "loading" | "playing" | "ended";
 // ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
-export default function PoseMatchGame({
+export default function PunchTargetGame({
   roomId,
   userId,
   players,
