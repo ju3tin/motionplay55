@@ -34,6 +34,8 @@ send:(data:any)=>void;
 
 gameActive:boolean;
 
+players:number;
+
 }
 
 
