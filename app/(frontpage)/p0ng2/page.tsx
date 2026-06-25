@@ -7,7 +7,7 @@ import GameLobby from '@/components/GameLobby';
 import TargetPoseDisplay from '@/components/TargetPoseDisplay';
 import PlayerCamera from '@/components/PlayerCamera';
 import SimilarityMeter from '@/components/SimilarityMeter';
-import Leaderboard from '@/components/Leaderboard';
+import Leaderboard5 from '@/components/Leaderboard5';
 import { targetPoses, getReferenceKeypoints } from '@/lib/poseDatabase';
 
 export default function PoseMatchGame() {
@@ -133,7 +133,7 @@ export default function PoseMatchGame() {
 
             {/* Right: Leaderboard */}
             <div className="lg:col-span-3">
-              <Leaderboard players={players} myUserId={myUserId} />
+              <Leaderboard5 players={players} myUserId={myUserId} />
             </div>
           </div>
         )}
