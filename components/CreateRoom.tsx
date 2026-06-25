@@ -2,39 +2,60 @@
 import { useState } from 'react';
 
 export default function CreateRoom({ onRoomCreated }: { onRoomCreated: (payload: any) => void }) {
-  const [roomName, setRoomName] = useState('');
+  const [gameId, setGameId] = useState("");
+  const [roomName, setRoomName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [userId, setUserId] = useState("Host");
 
   const handleCreate = () => {
-    const payload: any = { event: "create-room", maxPlayers };
-    if (roomName.trim()) payload.room = roomName.trim();
+    const payload = {
+      event: "create-room",
+      gameId: gameId.trim() || undefined,
+      room: roomName.trim() || undefined,
+      maxPlayers,
+      userId: userId.trim()
+    };
     onRoomCreated(payload);
   };
 
   return (
-    <div className="bg-gray-800 p-8 rounded-2xl">
-      <h2 className="text-2xl font-bold mb-6">Create New Room</h2>
-      
+    <div className="bg-zinc-900 p-8 rounded-2xl">
+      <h2 className="text-3xl font-bold mb-6">Create New Game</h2>
+
       <input
         type="text"
-        placeholder="Room name (optional)"
+        placeholder="Custom Game ID (optional)"
+        value={gameId}
+        onChange={(e) => setGameId(e.target.value)}
+        className="w-full p-4 bg-zinc-800 rounded-xl mb-4"
+      />
+
+      <input
+        type="text"
+        placeholder="Room Name (optional)"
         value={roomName}
         onChange={(e) => setRoomName(e.target.value)}
-        className="w-full p-4 bg-gray-700 rounded-xl mb-6 focus:outline-none"
+        className="w-full p-4 bg-zinc-800 rounded-xl mb-4"
+      />
+
+      <input
+        type="text"
+        placeholder="Your Username"
+        value={userId}
+        onChange={(e) => setUserId(e.target.value)}
+        className="w-full p-4 bg-zinc-800 rounded-xl mb-6"
       />
 
       <div className="mb-6">
         <p className="mb-3 text-gray-400">Max Players</p>
         <div className="flex gap-3">
-          {[2, 4, 6, 8].map((n) => (
+          {[2, 4, 6, 8].map(n => (
             <button
               key={n}
               onClick={() => setMaxPlayers(n)}
-              className={`flex-1 py-4 rounded-xl font-semibold transition ${
-                maxPlayers === n ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-              }`}
+              className={`flex-1 py-4 rounded-xl font-semibold ${maxPlayers === n ? 'bg-blue-600' : 'bg-zinc-700'}`}
             >
-              {n} Players
+              {n}
             </button>
           ))}
         </div>
@@ -42,9 +63,9 @@ export default function CreateRoom({ onRoomCreated }: { onRoomCreated: (payload:
 
       <button
         onClick={handleCreate}
-        className="w-full bg-green-600 hover:bg-green-700 py-4 text-xl font-bold rounded-2xl transition"
+        className="w-full bg-green-600 hover:bg-green-700 py-4 text-xl font-bold rounded-2xl"
       >
-        Create Room
+        Create Game
       </button>
     </div>
   );
