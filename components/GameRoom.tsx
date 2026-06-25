@@ -12,6 +12,7 @@ export default function GameRoom({
   countdown,
   messages,
   userId,
+  send,
   onReady,
   onSendMessage,
   onLeave
