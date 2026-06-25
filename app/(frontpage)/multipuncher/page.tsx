@@ -98,12 +98,14 @@ export default function Home() {
           </div>
         ) : (
           // Game Room
-         <PunchTargetGame
-  currentGameId={socket.currentGameId}
-  players={socket.players}
+  <PunchTargetGame
+  currentGameId={currentGameId}
+  players={players}
   userId={userId}
-  send={socket.send}
-  status={socket.status}
+  send={send}
+  status={status}
+  onReady={onReady}
+  onLeave={onLeave}
 />
      
         )}
