@@ -1,76 +1,35 @@
 'use client';
 import { useState } from 'react';
 
-interface Message {
-  userId?: string;
-  message?: string;
-  fromAdmin?: boolean;
-}
-
-interface GameRoomProps {
-  room: string;
-  players: number;
-  maxPlayers: number;
-  readyCount: number;
-  status: 'waiting' | 'countdown' | 'playing';
-  countdown: number | null;
-  messages: Message[];
-  isAdmin: boolean;
-  onSendReady: () => void;
-  onSendMessage: (data: any) => void;
-  onLeave: () => void;
-}
-
 export default function GameRoom({
-  room,
-  players,
-  maxPlayers,
-  readyCount,
-  status,
-  countdown,
-  messages,
-  isAdmin,
-  onSendReady,
-  onSendMessage,
-  onLeave,
-}: GameRoomProps) {
-  const [message, setMessage] = useState('');
+  room, players, maxPlayers, readyCount, status, countdown,
+  messages, onReady, onSendMessage, onLeave
+}: any) {
+  const [msg, setMsg] = useState("");
 
-  const handleSend = () => {
-    if (message.trim()) {
-      onSendMessage({
-        event: "chat",
-        room,
-        userId: "You",
-        message: message.trim(),
-      });
-      setMessage('');
+  const sendMessage = () => {
+    if (msg.trim()) {
+      onSendMessage({ event: "chat", room, message: msg.trim(), userId: "You" });
+      setMsg("");
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="bg-gray-900 p-6 rounded-2xl mb-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">
-            Room: <span className="text-blue-400">{room}</span>
-          </h1>
-          <button
-            onClick={onLeave}
-            className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-xl font-medium"
-          >
-            Leave Room
-          </button>
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-zinc-900 p-6 rounded-2xl mb-6">
+        <div className="flex justify-between">
+          <h1 className="text-3xl font-bold">Room: {room}</h1>
+          <button onClick={onLeave} className="bg-red-600 px-6 py-2 rounded-xl">Leave</button>
         </div>
 
-        <div className="flex flex-wrap gap-6 text-lg mb-4">
-          <div>Players: <span className="font-bold text-green-400">{players}/{maxPlayers}</span></div>
-          <div>Ready: <span className="font-bold text-yellow-400">{readyCount}/{players}</span></div>
-          <div>Status: <span className="capitalize font-semibold">{status}</span></div>
+        <div className="mt-4 flex gap-8 text-lg">
+          <div>Players: <strong className="text-green-400">{players}/{maxPlayers}</strong></div>
+          <div>Ready: <strong className="text-yellow-400">{readyCount}/{players}</strong></div>
+          <div>Status: <strong className="capitalize">{status}</strong></div>
         </div>
 
-        {countdown !== null && (
-          <div className="text-5xl font-bold text-red-500 text-center mt-6">
+        {countdown && (
+          <div className="text-6xl font-bold text-red-500 text-center mt-8">
             Starting in {countdown}...
           </div>
         )}
@@ -78,41 +37,32 @@ export default function GameRoom({
 
       {status === 'waiting' && (
         <button
-          onClick={onSendReady}
-          className="w-full bg-purple-600 hover:bg-purple-700 py-5 text-xl font-bold rounded-2xl mb-8 transition"
+          onClick={onReady}
+          className="w-full bg-purple-600 hover:bg-purple-700 py-5 text-2xl font-bold rounded-2xl mb-8"
         >
           {readyCount === players && players >= 2 ? "Waiting for others..." : "I'm Ready"}
         </button>
       )}
 
       {/* Chat */}
-      <div className="bg-gray-900 rounded-2xl p-4 h-[500px] flex flex-col">
-        <div className="flex-1 overflow-y-auto mb-4 space-y-3 pr-2">
-          {messages.map((msg, i) => (
-            <div key={i} className="bg-gray-800 p-4 rounded-xl">
-              <strong className={msg.fromAdmin ? "text-red-400" : "text-blue-400"}>
-                {msg.userId || 'System'}
-              </strong>
-              : {msg.message}
+      <div className="bg-zinc-900 rounded-2xl p-6 h-96 flex flex-col">
+        <div className="flex-1 overflow-auto mb-4 space-y-2">
+          {messages.map((m: any, i: number) => (
+            <div key={i} className="bg-zinc-800 p-3 rounded-xl">
+              <strong>{m.userId}:</strong> {m.message}
             </div>
           ))}
         </div>
 
         <div className="flex gap-2">
           <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Type a message..."
-            className="flex-1 p-4 bg-gray-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder="Type message..."
+            className="flex-1 p-4 bg-zinc-800 rounded-xl"
           />
-          <button
-            onClick={handleSend}
-            className="bg-blue-600 hover:bg-blue-700 px-10 rounded-xl font-semibold"
-          >
-            Send
-          </button>
+          <button onClick={sendMessage} className="bg-blue-600 px-8 rounded-xl">Send</button>
         </div>
       </div>
     </div>
