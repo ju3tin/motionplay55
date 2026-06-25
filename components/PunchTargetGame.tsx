@@ -10,11 +10,13 @@ export interface Player {
 }
 
 export interface GameProps {
-  currentGameId: string;
-  players: any;           // can be number or array
+  roomId?: string;           // from GameRoom1
+  currentGameId?: string;    // from multipuncher/page.tsx
+  players: any;
   userId: string;
   send: (data: any) => void;
-  status: string;
+  gameActive?: boolean;
+  status?: string;           // alternative to gameActive
 }
 
 const GAME_DURATION = 60;
@@ -34,12 +36,17 @@ interface Target {
 type GameState = "idle" | "loading" | "countdown" | "playing" | "ended";
 
 export default function PunchTargetGame({
+  roomId,
   currentGameId,
   players: playersProp,
   userId,
   send,
+  gameActive,
   status,
 }: GameProps) {
+  const effectiveRoomId = roomId || currentGameId || "";
+  const isGameActive = gameActive || status === "playing";
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -65,8 +72,6 @@ export default function PunchTargetGame({
   const [finalScore, setFinalScore] = useState(0);
   const [finalCombo, setFinalCombo] = useState(0);
 
-  const gameActive = status === "playing";
-
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -74,7 +79,6 @@ export default function PunchTargetGame({
         name: `Player ${i + 1}`,
       }));
 
-  // Host detection
   useEffect(() => {
     if (!playersList.length) return;
     const sorted = [...playersList].sort((a, b) => a.id.localeCompare(b.id));
@@ -119,7 +123,6 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // Receive targets
   useEffect(() => {
     const listener = (e: any) => {
       const data = e.detail;
@@ -144,10 +147,10 @@ export default function PunchTargetGame({
     if (!isHostRef.current) return;
     send({
       type: "TARGET",
-      roomId: currentGameId,
+      roomId: effectiveRoomId,
       target: { id: idRef.current++, x: Math.random(), y: Math.random(), r: 40 },
     });
-  }, [send, currentGameId]);
+  }, [send, effectiveRoomId]);
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
@@ -170,13 +173,13 @@ export default function PunchTargetGame({
 
       send({
         type: "SCORE",
-        roomId: currentGameId,
+        roomId: effectiveRoomId,
         userId,
         score: scoreRef.current,
         combo: comboRef.current,
       });
     }
-  }, [send, currentGameId, userId]);
+  }, [send, effectiveRoomId, userId]);
 
   const endGame = useCallback(() => {
     setGameState("ended");
@@ -281,7 +284,7 @@ export default function PunchTargetGame({
   }, [checkHit, gameState]);
 
   useEffect(() => {
-    if (!gameActive) {
+    if (!isGameActive) {
       setGameState("idle");
       return;
     }
@@ -324,7 +327,7 @@ export default function PunchTargetGame({
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameActive, loadModel, startCamera]);
+  }, [isGameActive, loadModel, startCamera]);
 
   useEffect(() => {
     if (gameState !== "playing") return;
