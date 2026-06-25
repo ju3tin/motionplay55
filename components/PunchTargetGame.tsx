@@ -15,8 +15,8 @@ export interface GameProps {
   players: any;
   userId: string;
   send: (data: any) => void;
-  gameActive?: boolean;   // from GameRoom1
-  status?: string;        // from multipuncher
+  gameActive?: boolean;
+  status?: string;
   onReady?: () => void;
   onLeave?: () => void;
 }
@@ -93,7 +93,6 @@ export default function PunchTargetGame({
 
   const loadModel = useCallback(async () => {
     setGameState("loading");
-    setErrorMsg("");
     try {
       const tf = await import("@tensorflow/tfjs");
       await import("@tensorflow/tfjs-backend-webgl");
@@ -105,9 +104,11 @@ export default function PunchTargetGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
+      console.log("✅ Model loaded");
       return true;
     } catch (e: any) {
-      setErrorMsg("Failed to load model: " + e.message);
+      console.error("Model load failed", e);
+      setErrorMsg("Failed to load model");
       setGameState("idle");
       return false;
     }
@@ -122,9 +123,11 @@ export default function PunchTargetGame({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      console.log("✅ Camera started");
       return true;
-    } catch {
-      setErrorMsg("Camera access denied.");
+    } catch (err) {
+      console.error("Camera failed", err);
+      setErrorMsg("Camera access denied");
       return false;
     }
   }, []);
@@ -174,7 +177,6 @@ export default function PunchTargetGame({
       comboRef.current++;
       if (comboRef.current > maxComboRef.current) maxComboRef.current = comboRef.current;
       scoreRef.current += 100 + comboRef.current * 15;
-
       setScore(scoreRef.current);
       setCombo(comboRef.current);
 
@@ -197,24 +199,183 @@ export default function PunchTargetGame({
     setFinalCombo(maxComboRef.current);
   }, []);
 
-  // Main loop (kept short)
   const startLoop = useCallback(() => {
-    // ... (same as previous working versions - paste from earlier if needed)
-    // For brevity, assuming you have it from previous messages
+    const canvas = canvasRef.current;
+    const area = areaRef.current;
+    if (!canvas || !area) return;
+
+    const ctx = canvas.getContext("2d")!;
+    const loop = () => {
+      const now = Date.now();
+      const { width, height } = area.getBoundingClientRect();
+      canvas.width = width;
+      canvas.height = height;
+      ctx.clearRect(0, 0, width, height);
+
+      targetsRef.current = targetsRef.current.filter(t => {
+        if (!t.hit && now - t.born > TARGET_LIFE) {
+          comboRef.current = 0;
+          return false;
+        }
+        if (t.hit && now - t.born > TARGET_LIFE - 200) return false;
+        return true;
+      });
+
+      targetsRef.current.forEach(t => {
+        const age = now - t.born;
+        ctx.save();
+        if (t.hit) {
+          const hitAge = age / (TARGET_LIFE - 200);
+          ctx.globalAlpha = Math.max(0, 1 - hitAge * 2);
+          ctx.translate(t.x, t.y);
+          ctx.scale(1 + hitAge * 0.8, 1 + hitAge * 0.8);
+          ctx.rotate(hitAge * 0.5);
+          ctx.translate(-t.x, -t.y);
+        } else {
+          const pulse = 1 + Math.sin(now / 300) * 0.06;
+          ctx.translate(t.x, t.y);
+          ctx.scale(pulse, pulse);
+          ctx.translate(-t.x, -t.y);
+        }
+
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        const grad = ctx.createRadialGradient(t.x - t.r * 0.3, t.y - t.r * 0.3, 0, t.x, t.y, t.r);
+        grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
+        grad.addColorStop(1, t.hit ? "#006633" : "#880022");
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        ctx.font = `${t.r * 1.1}px serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(t.hit ? "💥" : "🎯", t.x, t.y);
+        ctx.restore();
+      });
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+
+    let detecting = false;
+    const detectLoop = async () => {
+      if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
+        setTimeout(detectLoop, 100);
+        return;
+      }
+      if (detecting) {
+        setTimeout(detectLoop, 80);
+        return;
+      }
+      detecting = true;
+      try {
+        const poses = await detectorRef.current.estimatePoses(videoRef.current);
+        if (poses?.length) {
+          const area = areaRef.current;
+          if (!area) return;
+          const { width, height } = area.getBoundingClientRect();
+          const scaleX = width / (videoRef.current.videoWidth || 640);
+          const scaleY = height / (videoRef.current.videoHeight || 480);
+          const pose = poses[0];
+
+          const lw = pose.keypoints[9];
+          if (lw?.score > 0.35) checkHit(width - lw.x * scaleX, lw.y * scaleY);
+
+          const rw = pose.keypoints[10];
+          if (rw?.score > 0.35) checkHit(width - rw.x * scaleX, rw.y * scaleY);
+        }
+      } catch (_) {}
+      detecting = false;
+      if (gameState === "playing") setTimeout(detectLoop, 80);
+    };
+    detectLoop();
   }, [checkHit, gameState]);
 
-  // Game init and loops (same logic as before)
+  // Main Game Start
   useEffect(() => {
+    console.log("🎮 GameActive changed:", gameActive, "Current gameState:", gameState);
+
     if (!gameActive) {
       setGameState("idle");
       return;
     }
-    // init logic...
+
+    const initGame = async () => {
+      console.log("🚀 Starting game init...");
+      targetsRef.current = [];
+      scoreRef.current = 0;
+      comboRef.current = 0;
+      maxComboRef.current = 0;
+      idRef.current = 0;
+
+      setScore(0);
+      setCombo(0);
+      setTimeLeft(GAME_DURATION);
+
+      if (!detectorRef.current) {
+        const ok = await loadModel();
+        if (!ok) return;
+      }
+
+      const camOk = await startCamera();
+      if (!camOk) return;
+
+      setGameState("countdown");
+      let c = 3;
+      setCountdown(c);
+
+      const cd = setInterval(() => {
+        c--;
+        setCountdown(c);
+        console.log("Countdown:", c);
+        if (c <= 0) {
+          clearInterval(cd);
+          console.log("✅ Countdown finished → Starting game!");
+          setGameState("playing");
+        }
+      }, 1000);
+    };
+
+    initGame();
+
+    return () => {
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [gameActive, loadModel, startCamera]);
 
+  // Start loops when playing
   useEffect(() => {
     if (gameState !== "playing") return;
-    // startLoop logic...
+
+    console.log("🎯 Starting game loops...");
+    startLoop();
+
+    if (isHostRef.current) {
+      spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
+    }
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [gameState, startLoop, spawnTarget, endGame]);
 
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -239,7 +400,7 @@ export default function PunchTargetGame({
               <h1 style={css.bigTitle}>🥊 Punch Targets</h1>
               <div style={{ margin: "20px 0", textAlign: "left" }}>
                 <div><strong>Room:</strong> {effectiveRoomId}</div>
-                <div><strong>Status:</strong> {status || "waiting"}</div>
+                <div><strong>Status:</strong> {status}</div>
                 <div><strong>Players:</strong> {playersList.length}</div>
               </div>
 
