@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useGameSocket } from '@/lib/socket';
 import CreateRoom from '@/components/CreateRoom';
-import GameRoom from '@/components/GameRoom';
+import GameRoom1 from '@/components/GameRoom1';
 import PoseMatchGame from '@/components/PoseMatchGame';
 
 export default function Home() {
@@ -98,7 +98,7 @@ export default function Home() {
           </div>
         ) : (
           // Game Room
-          <GameRoom
+          <GameRoom1
             currentGameId={socket.currentGameId}
             currentRoom={socket.currentRoom}
             players={socket.players}
