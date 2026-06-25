@@ -84,12 +84,11 @@ export default function PunchTargetGame({
         name: `Player ${i + 1}`,
       }));
 
-  // Host detection
   useEffect(() => {
     if (!playersList.length) return;
     const sorted = [...playersList].sort((a, b) => a.id.localeCompare(b.id));
     isHostRef.current = sorted[0].id === userId;
-    console.log("Host is:", isHostRef.current ? userId : "other");
+    console.log("👑 You are host:", isHostRef.current);
   }, [playersList, userId]);
 
   const loadModel = useCallback(async () => {
@@ -105,10 +104,10 @@ export default function PunchTargetGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-      console.log("✅ Model Loaded Successfully");
+      console.log("✅ Model Loaded");
       return true;
-    } catch (e: any) {
-      console.error("❌ Model load failed", e);
+    } catch (e) {
+      console.error(e);
       setErrorMsg("Failed to load model");
       setGameState("idle");
       return false;
@@ -118,7 +117,7 @@ export default function PunchTargetGame({
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: "user", width: 640, height: 480 },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -127,7 +126,7 @@ export default function PunchTargetGame({
       console.log("✅ Camera started");
       return true;
     } catch (err) {
-      console.error("❌ Camera failed", err);
+      console.error(err);
       setErrorMsg("Camera access denied");
       return false;
     }
@@ -138,13 +137,13 @@ export default function PunchTargetGame({
     const listener = (e: any) => {
       const data = e.detail;
       if (data.type === "TARGET") {
-        console.log("📍 Received target from host", data.target);
+        console.log("📍 Received target", data.target);
         const t = data.target;
         const area = areaRef.current;
         targetsRef.current.push({
           id: t.id,
-          x: t.x * (area?.clientWidth || 800),
-          y: t.y * (area?.clientHeight || 600),
+          x: t.x,
+          y: t.y,
           r: 40,
           born: Date.now(),
           hit: false,
@@ -157,7 +156,7 @@ export default function PunchTargetGame({
 
   const spawnTarget = useCallback(() => {
     if (!isHostRef.current) return;
-    console.log("🌟 Host spawning target");
+    console.log("🌟 Spawning target");
     send({
       type: "TARGET",
       roomId: effectiveRoomId,
@@ -169,7 +168,13 @@ export default function PunchTargetGame({
     let hitAny = false;
     targetsRef.current = targetsRef.current.map(t => {
       if (t.hit) return t;
-      if (Math.hypot(wx - t.x, wy - t.y) < HIT_RADIUS + t.r) {
+      const area = areaRef.current;
+      if (!area) return t;
+
+      const tx = t.x * area.clientWidth;
+      const ty = t.y * area.clientHeight;
+
+      if (Math.hypot(wx - tx, wy - ty) < HIT_RADIUS + t.r) {
         hitAny = true;
         return { ...t, hit: true };
       }
@@ -205,22 +210,20 @@ export default function PunchTargetGame({
   const startLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const area = areaRef.current;
-    if (!canvas || !area) {
-      console.log("❌ Canvas or area not ready");
-      return;
-    }
+    if (!canvas || !area) return;
 
     const ctx = canvas.getContext("2d")!;
     console.log("🎨 Render loop started");
 
     const loop = () => {
       const now = Date.now();
-      const { width, height } = area.getBoundingClientRect();
+      const width = area.clientWidth;
+      const height = area.clientHeight;
       canvas.width = width;
       canvas.height = height;
       ctx.clearRect(0, 0, width, height);
 
-      // Expire targets
+      // Draw targets
       targetsRef.current = targetsRef.current.filter(t => {
         if (!t.hit && now - t.born > TARGET_LIFE) return false;
         if (t.hit && now - t.born > TARGET_LIFE - 200) return false;
@@ -232,36 +235,38 @@ export default function PunchTargetGame({
       }
 
       targetsRef.current.forEach(t => {
-        const age = now - t.born;
+        const x = t.x * width;
+        const y = t.y * height;
+
         ctx.save();
         if (t.hit) {
-          const hitAge = age / (TARGET_LIFE - 200);
+          const hitAge = (now - t.born) / (TARGET_LIFE - 200);
           ctx.globalAlpha = Math.max(0, 1 - hitAge * 2);
         } else {
           const pulse = 1 + Math.sin(now / 300) * 0.06;
-          ctx.translate(t.x, t.y);
+          ctx.translate(x, y);
           ctx.scale(pulse, pulse);
-          ctx.translate(-t.x, -t.y);
+          ctx.translate(-x, -y);
         }
 
         ctx.beginPath();
-        ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
+        ctx.arc(x, y, t.r + 6, 0, Math.PI * 2);
         ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
         ctx.lineWidth = 3;
         ctx.stroke();
 
-        const grad = ctx.createRadialGradient(t.x - t.r * 0.3, t.y - t.r * 0.3, 0, t.x, t.y, t.r);
+        const grad = ctx.createRadialGradient(x - t.r * 0.3, y - t.r * 0.3, 0, x, y, t.r);
         grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
         grad.addColorStop(1, t.hit ? "#006633" : "#880022");
         ctx.beginPath();
-        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.arc(x, y, t.r, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
 
         ctx.font = `${t.r * 1.1}px serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(t.hit ? "💥" : "🎯", t.x, t.y);
+        ctx.fillText(t.hit ? "💥" : "🎯", x, y);
         ctx.restore();
       });
 
@@ -269,7 +274,7 @@ export default function PunchTargetGame({
     };
     rafRef.current = requestAnimationFrame(loop);
 
-    // Pose Detection
+    // Pose Detection + Visual Wrist Debug
     let detecting = false;
     const detectLoop = async () => {
       if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
@@ -284,21 +289,34 @@ export default function PunchTargetGame({
       try {
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
         if (poses?.length) {
+          const pose = poses[0];
           const area = areaRef.current;
           if (!area) return;
-          const { width, height } = area.getBoundingClientRect();
-          const scaleX = width / (videoRef.current.videoWidth || 640);
-          const scaleY = height / (videoRef.current.videoHeight || 480);
-          const pose = poses[0];
 
-          const lw = pose.keypoints[9];
-          if (lw?.score > 0.35) {
-            checkHit(width - lw.x * scaleX, lw.y * scaleY);
-          }
+          const width = area.clientWidth;
+          const height = area.clientHeight;
+          const videoW = videoRef.current.videoWidth || 640;
+          const videoH = videoRef.current.videoHeight || 480;
 
-          const rw = pose.keypoints[10];
-          if (rw?.score > 0.35) {
-            checkHit(width - rw.x * scaleX, rw.y * scaleY);
+          const scaleX = width / videoW;
+          const scaleY = height / videoH;
+
+          // Draw wrists for debug
+          const ctx = canvasRef.current?.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "lime";
+            [9, 10].forEach(i => {
+              const kp = pose.keypoints[i];
+              if (kp?.score > 0.35) {
+                const screenX = width - kp.x * scaleX;
+                const screenY = kp.y * scaleY;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, 12, 0, Math.PI * 2);
+                ctx.fill();
+
+                checkHit(screenX, screenY);
+              }
+            });
           }
         }
       } catch (e) {
@@ -310,17 +328,14 @@ export default function PunchTargetGame({
     detectLoop();
   }, [checkHit, gameState]);
 
-  // Game Control
+  // Game init
   useEffect(() => {
-    console.log("🎮 gameActive changed to:", gameActive);
-
     if (!gameActive) {
       setGameState("idle");
       return;
     }
 
     const init = async () => {
-      console.log("🚀 Starting full game init...");
       targetsRef.current = [];
       scoreRef.current = 0;
       comboRef.current = 0;
@@ -347,7 +362,6 @@ export default function PunchTargetGame({
         setCountdown(c);
         if (c <= 0) {
           clearInterval(cd);
-          console.log("✅ Countdown finished - Starting game play!");
           setGameState("playing");
         }
       }, 1000);
@@ -364,12 +378,10 @@ export default function PunchTargetGame({
   useEffect(() => {
     if (gameState !== "playing") return;
 
-    console.log("🎯 Starting render + detection loops");
     startLoop();
 
     if (isHostRef.current) {
       spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
-      console.log("Host started spawning targets");
     }
 
     timerRef.current = setInterval(() => {
@@ -413,6 +425,7 @@ export default function PunchTargetGame({
                 <div><strong>Room:</strong> {effectiveRoomId}</div>
                 <div><strong>Status:</strong> {status}</div>
                 <div><strong>Players:</strong> {playersList.length}</div>
+                <div><strong>You are host:</strong> {isHostRef.current ? "Yes" : "No"}</div>
               </div>
 
               {onLeave && (
@@ -429,8 +442,6 @@ export default function PunchTargetGame({
                   ✅ I'm Ready
                 </button>
               )}
-
-              {isReady && <p style={{ color: "#00cc66" }}>Waiting for others...</p>}
             </div>
           </div>
         )}
