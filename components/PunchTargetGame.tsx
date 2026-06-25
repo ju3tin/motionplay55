@@ -10,11 +10,11 @@ export interface Player {
 }
 
 export interface GameProps {
-  roomId: string;
+  currentGameId: string;
+  players: any;           // can be number or array
   userId: string;
-  players: any;
   send: (data: any) => void;
-  gameActive: boolean;
+  status: string;
 }
 
 const GAME_DURATION = 60;
@@ -34,11 +34,11 @@ interface Target {
 type GameState = "idle" | "loading" | "countdown" | "playing" | "ended";
 
 export default function PunchTargetGame({
-  roomId,
-  userId,
+  currentGameId,
   players: playersProp,
+  userId,
   send,
-  gameActive,
+  status,
 }: GameProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,6 +65,8 @@ export default function PunchTargetGame({
   const [finalScore, setFinalScore] = useState(0);
   const [finalCombo, setFinalCombo] = useState(0);
 
+  const gameActive = status === "playing";
+
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -79,7 +81,6 @@ export default function PunchTargetGame({
     isHostRef.current = sorted[0].id === userId;
   }, [playersList, userId]);
 
-  // Load Model
   const loadModel = useCallback(async () => {
     setGameState("loading");
     setErrorMsg("");
@@ -118,7 +119,7 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // Receive targets from host
+  // Receive targets
   useEffect(() => {
     const listener = (e: any) => {
       const data = e.detail;
@@ -143,10 +144,10 @@ export default function PunchTargetGame({
     if (!isHostRef.current) return;
     send({
       type: "TARGET",
-      roomId,
+      roomId: currentGameId,
       target: { id: idRef.current++, x: Math.random(), y: Math.random(), r: 40 },
     });
-  }, [send, roomId]);
+  }, [send, currentGameId]);
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
@@ -169,13 +170,13 @@ export default function PunchTargetGame({
 
       send({
         type: "SCORE",
-        roomId,
+        roomId: currentGameId,
         userId,
         score: scoreRef.current,
         combo: comboRef.current,
       });
     }
-  }, [send, roomId, userId]);
+  }, [send, currentGameId, userId]);
 
   const endGame = useCallback(() => {
     setGameState("ended");
@@ -256,10 +257,7 @@ export default function PunchTargetGame({
         setTimeout(detectLoop, 100);
         return;
       }
-      if (detecting) {
-        setTimeout(detectLoop, 80);
-        return;
-      }
+      if (detecting) { setTimeout(detectLoop, 80); return; }
       detecting = true;
       try {
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
@@ -282,7 +280,6 @@ export default function PunchTargetGame({
     detectLoop();
   }, [checkHit, gameState]);
 
-  // Main Game Control
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -329,7 +326,6 @@ export default function PunchTargetGame({
     };
   }, [gameActive, loadModel, startCamera]);
 
-  // Start loops when playing
   useEffect(() => {
     if (gameState !== "playing") return;
 
@@ -356,23 +352,10 @@ export default function PunchTargetGame({
     };
   }, [gameState, startLoop, spawnTarget, endGame]);
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      if (spawnRef.current) clearInterval(spawnRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
-    };
-  }, []);
-
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   return (
     <div style={css.root}>
-      {/* HUD */}
       {(gameState === "playing" || gameState === "ended") && (
         <div style={css.hud}>
           <div>⏱ {`${Math.floor(timeLeft / 60).toString().padStart(2, "0")}:${(timeLeft % 60).toString().padStart(2, "0")}`}</div>
@@ -389,10 +372,10 @@ export default function PunchTargetGame({
           <div style={css.overlay}>
             <div style={css.card}>
               <h1 style={css.bigTitle}>🥊 Punch Targets</h1>
-              <p style={css.hint}>Punch the targets using your hands!</p>
+              <p style={css.hint}>Punch the targets with your hands!</p>
               {errorMsg && <p style={css.error}>{errorMsg}</p>}
               <button style={css.btn} disabled>
-                {gameState === "loading" ? "Loading AI..." : "Waiting for Host..."}
+                {gameState === "loading" ? "Loading AI..." : "Waiting for Host to Start"}
               </button>
             </div>
           </div>
@@ -424,7 +407,6 @@ export default function PunchTargetGame({
         )}
       </div>
 
-      {/* Leaderboard */}
       {gameState === "playing" && (
         <div style={css.leaderboard}>
           <h3>Players</h3>
@@ -440,7 +422,6 @@ export default function PunchTargetGame({
   );
 }
 
-// Styles
 const css: Record<string, React.CSSProperties> = {
   root: { width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "#fff", fontFamily: "system-ui, sans-serif" },
   hud: { position: "absolute", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", display: "flex", justifyContent: "center", gap: 40, zIndex: 50, fontSize: "1.4rem", fontWeight: 700 },
