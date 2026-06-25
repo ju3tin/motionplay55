@@ -1,48 +1,43 @@
 "use client";
 
-
 import {
-useEffect,
-useRef,
-useState
+  useEffect,
+  useRef,
+  useState
 } from "react";
 
-
-import {
-POSES
-} from "./poses";
+import { POSES } from "./poses";
 
 
+interface Props {
 
-interface Props{
+  roomId:string;
 
-roomId:string;
+  userId:string;
 
-userId:string;
+  players:number;
 
-players:number;
+  send:(data:any)=>void;
 
-send:(data:any)=>void;
-
-gameActive:boolean;
+  gameActive:boolean;
 
 }
 
 
 
-interface Keypoint{
+interface Keypoint {
 
-x:number;
+  x:number;
 
-y:number;
+  y:number;
 
-score:number;
+  score:number;
 
 }
 
 
 
-const BONES:[number,number][]=[
+const BONES:[number,number][] = [
 
 [0,1],
 [0,2],
@@ -73,7 +68,6 @@ const BONES:[number,number][]=[
 
 
 
-
 export default function PoseMatchGame({
 
 roomId,
@@ -87,59 +81,50 @@ gameActive
 }:Props){
 
 
-
-const videoRef=
+const videoRef =
 useRef<HTMLVideoElement>(null);
 
 
-const canvasRef=
+const canvasRef =
 useRef<HTMLCanvasElement>(null);
 
 
-
-const detector=
+const detector =
 useRef<any>(null);
 
 
-const points=
+const points =
 useRef<Keypoint[]>([]);
 
 
 
-const [modelReady,setModelReady]
-=
+const [modelReady,setModelReady] =
 useState(false);
 
 
-
-const [cameraReady,setCameraReady]
-=
+const [cameraReady,setCameraReady] =
 useState(false);
 
 
-
-const [score,setScore]
-=
+const [score,setScore] =
 useState(0);
 
 
-
-const [time,setTime]
-=
+const [time,setTime] =
 useState(30);
 
 
-
-const [target,setTarget]
-=
-useState<any>(POSES.tPose);
+const [target,setTarget] =
+useState<any>(
+POSES.tPose
+);
 
 
 
 
 
 //
-// Load tensorflow while waiting
+// LOAD TENSORFLOW WHILE WAITING
 //
 
 useEffect(()=>{
@@ -148,8 +133,7 @@ useEffect(()=>{
 async function load(){
 
 
-
-const tf=
+const tf =
 await import("@tensorflow/tfjs");
 
 
@@ -167,14 +151,14 @@ await tf.ready();
 
 
 
-const pd=
+const pd =
 await import(
 "@tensorflow-models/pose-detection"
 );
 
 
 
-detector.current=
+detector.current =
 await pd.createDetector(
 
 pd.SupportedModels.MoveNet,
@@ -196,12 +180,12 @@ pd.movenet
 setModelReady(true);
 
 
+
 }
 
 
 
 load();
-
 
 
 },[]);
@@ -212,8 +196,10 @@ load();
 
 
 
+
+
 //
-// Pick pose when game starts
+// PICK RANDOM POSE
 //
 
 useEffect(()=>{
@@ -223,11 +209,13 @@ if(!gameActive)
 return;
 
 
-const keys=
+
+const keys =
 Object.keys(POSES);
 
 
-const random=
+
+const random =
 keys[
 Math.floor(
 Math.random()*keys.length
@@ -235,8 +223,11 @@ Math.random()*keys.length
 ];
 
 
+
 setTarget(
-POSES[random as keyof typeof POSES]
+POSES[
+random as keyof typeof POSES
+]
 );
 
 
@@ -245,7 +236,10 @@ setTime(30);
 
 
 
-},[gameActive]);
+},[
+gameActive
+]);
+
 
 
 
@@ -255,7 +249,7 @@ setTime(30);
 
 
 //
-// Start camera only playing
+// CAMERA STARTS ONLY PLAYING
 //
 
 useEffect(()=>{
@@ -269,11 +263,10 @@ return;
 
 
 
-async function camera(){
+async function start(){
 
 
-
-const stream=
+const stream =
 await navigator
 .mediaDevices
 .getUserMedia({
@@ -292,7 +285,7 @@ facingMode:"user"
 
 
 
-videoRef.current!.srcObject=
+videoRef.current!.srcObject =
 stream;
 
 
@@ -309,7 +302,7 @@ setCameraReady(true);
 
 
 
-camera();
+start();
 
 
 
@@ -327,7 +320,7 @@ modelReady
 
 
 //
-// Timer
+// TIMER
 //
 
 useEffect(()=>{
@@ -338,16 +331,17 @@ return;
 
 
 
-const t=setInterval(()=>{
+const timer =
+setInterval(()=>{
 
 
-setTime(x=>{
+setTime(t=>{
 
 
-if(x<=1){
+if(t<=1){
 
 
-clearInterval(t);
+clearInterval(timer);
 
 
 
@@ -369,19 +363,22 @@ return 0;
 }
 
 
-return x-1;
+
+return t-1;
 
 
 });
-
 
 
 },1000);
 
 
 
-return()=>clearInterval(t);
+return()=>{
 
+clearInterval(timer);
+
+};
 
 
 },[
@@ -399,7 +396,7 @@ gameActive
 
 
 //
-// Detection
+// MOVE NET LOOP
 //
 
 useEffect(()=>{
@@ -412,30 +409,31 @@ return;
 
 
 
-let run=true;
+let active=true;
 
 
 
 async function loop(){
 
 
-
-while(run){
-
+while(active){
 
 
-const result=
+
+const result =
 
 await detector.current
 .estimatePoses(
+
 videoRef.current!
+
 );
 
 
 
 if(result.length){
 
-points.current=
+points.current =
 result[0].keypoints;
 
 }
@@ -443,7 +441,9 @@ result[0].keypoints;
 
 
 await new Promise(r=>
+
 setTimeout(r,80)
+
 );
 
 
@@ -451,7 +451,9 @@ setTimeout(r,80)
 }
 
 
+
 }
+
 
 
 loop();
@@ -460,7 +462,7 @@ loop();
 
 return()=>{
 
-run=false;
+active=false;
 
 };
 
@@ -469,8 +471,6 @@ run=false;
 },[
 cameraReady
 ]);
-
-
 
 
 
@@ -489,10 +489,15 @@ b:any[]
 let total=0;
 
 
-for(let i=0;i<a.length;i++){
+
+for(
+let i=0;
+i<a.length;
+i++
+){
 
 
-total+=Math.hypot(
+total += Math.hypot(
 
 a[i].x-b[i].x,
 
@@ -506,8 +511,11 @@ a[i].y-b[i].y
 
 
 return Math.max(
+
 0,
+
 100-(total/a.length)*40
+
 );
 
 
@@ -521,30 +529,53 @@ return Math.max(
 
 
 
+
+
 //
-// Draw
+// DRAW CAMERA + SKELETON
 //
 
 useEffect(()=>{
 
 
-if(!cameraReady)
+if(
+!cameraReady
+)
 return;
 
 
 
-const canvas=
+const canvas =
 canvasRef.current!;
 
 
-const ctx=
+const ctx =
 canvas.getContext("2d")!;
 
 
 
-canvas.width=innerWidth;
+function resize(){
 
-canvas.height=innerHeight;
+canvas.width =
+window.innerWidth;
+
+
+canvas.height =
+window.innerHeight;
+
+}
+
+
+
+resize();
+
+
+
+window.addEventListener(
+"resize",
+resize
+);
+
 
 
 
@@ -555,18 +586,19 @@ requestAnimationFrame(draw);
 
 
 
-const video=
+const video =
 videoRef.current!;
 
 
-if(video.readyState<2)
+
+if(
+video.readyState < 2
+)
 return;
 
 
 
-ctx.drawImage(
-
-video,
+ctx.clearRect(
 
 0,
 
@@ -580,7 +612,81 @@ canvas.height
 
 
 
-const k=
+const scale =
+Math.min(
+
+canvas.width/video.videoWidth,
+
+canvas.height/video.videoHeight
+
+);
+
+
+
+const w =
+video.videoWidth*scale;
+
+
+const h =
+video.videoHeight*scale;
+
+
+const dx =
+(canvas.width-w)/2;
+
+
+const dy =
+(canvas.height-h)/2;
+
+
+
+
+
+// mirror camera
+
+ctx.save();
+
+
+ctx.translate(
+dx+w,
+dy
+);
+
+
+ctx.scale(
+-1,
+1
+);
+
+
+
+ctx.drawImage(
+
+video,
+
+0,
+
+0,
+
+w,
+
+h
+
+);
+
+
+
+ctx.restore();
+
+
+
+
+
+
+
+
+
+const k =
 points.current;
 
 
@@ -588,7 +694,135 @@ points.current;
 if(k.length){
 
 
-const current=
+
+function map(
+p:Keypoint
+){
+
+
+return {
+
+x:
+
+dx+w-(p.x*scale),
+
+
+y:
+
+dy+(p.y*scale)
+
+};
+
+
+}
+
+
+
+
+
+
+// bones
+
+ctx.lineWidth=8;
+
+ctx.strokeStyle="#00ffcc";
+
+
+BONES.forEach(([a,b])=>{
+
+
+if(
+k[a].score < .3 ||
+k[b].score < .3
+)
+return;
+
+
+
+const A =
+map(k[a]);
+
+
+const B =
+map(k[b]);
+
+
+
+ctx.beginPath();
+
+
+ctx.moveTo(
+A.x,
+A.y
+);
+
+
+ctx.lineTo(
+B.x,
+B.y
+);
+
+
+ctx.stroke();
+
+
+
+});
+
+
+
+
+
+// joints
+
+k.forEach(p=>{
+
+
+if(p.score < .3)
+return;
+
+
+
+const pos =
+map(p);
+
+
+
+ctx.fillStyle="#ffffff";
+
+
+ctx.beginPath();
+
+
+ctx.arc(
+
+pos.x,
+
+pos.y,
+
+10,
+
+0,
+
+Math.PI*2
+
+);
+
+
+
+ctx.fill();
+
+
+
+});
+
+
+
+
+
+
+
+const current =
 k.map(p=>({
 
 x:p.x,
@@ -599,24 +833,24 @@ y:p.y
 
 
 
-const targetPoints=
-target.points.map(
-(p:any)=>({
+const targetPoints =
+target.points.map((p:any)=>({
 
 x:p[0],
 
 y:p[1]
 
-})
-);
+}));
 
 
 
-const s=
+const s =
 Math.round(
 
 compare(
+
 current,
+
 targetPoints
 
 )
@@ -647,11 +881,90 @@ score:s
 
 
 
+
+
+
+
+
+
+// ghost target
+
+
+ctx.globalAlpha=.35;
+
+ctx.strokeStyle="#ff0066";
+
+ctx.lineWidth=10;
+
+
+
+for(
+let i=1;
+i<target.points.length;
+i++
+){
+
+
+const a =
+target.points[i-1];
+
+
+const b =
+target.points[i];
+
+
+
+ctx.beginPath();
+
+
+ctx.moveTo(
+
+canvas.width/2+a[0]*100,
+
+canvas.height/2+a[1]*100
+
+);
+
+
+
+ctx.lineTo(
+
+canvas.width/2+b[0]*100,
+
+canvas.height/2+b[1]*100
+
+);
+
+
+
+ctx.stroke();
+
+
+
+}
+
+
+
+ctx.globalAlpha=1;
+
+
+
 }
 
 
 
 draw();
+
+
+
+return()=>{
+
+window.removeEventListener(
+"resize",
+resize
+);
+
+};
 
 
 
@@ -668,7 +981,8 @@ target
 
 
 
-return(
+
+return (
 
 <div
 
@@ -678,7 +992,11 @@ width:"100vw",
 
 height:"100vh",
 
-position:"relative"
+position:"relative",
+
+overflow:"hidden",
+
+background:"#000"
 
 }}
 
@@ -702,11 +1020,21 @@ display:"none"
 />
 
 
+
 <canvas
 
 ref={canvasRef}
 
+style={{
+
+width:"100%",
+
+height:"100%"
+
+}}
+
 />
+
 
 
 
@@ -720,31 +1048,31 @@ top:20,
 
 left:20,
 
-color:"white",
+color:"#fff",
 
-fontSize:32
+fontSize:32,
+
+fontFamily:"monospace"
 
 }}
 
 >
 
-{target.name}
+POSE: {target.name}
 
 <br/>
 
-{score}%
+MATCH: {score}%
 
 <br/>
 
-{time}s
-
+TIME: {time}
 
 </div>
 
 
 
 </div>
-
 
 );
 
