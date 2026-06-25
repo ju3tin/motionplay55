@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useGameSocket } from '@/lib/socket';
 import CreateRoom from '@/components/CreateRoom';
 import GameRoom1 from '@/components/GameRoom1';
-import PoseMatchGame from '@/components/PoseMatchGame';
+import PunchTargetGame from '@/components/PunchTargetGame';
 
 export default function Home() {
   const socket = useGameSocket();
