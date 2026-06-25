@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import PoseMatchGame from "@/components/PoseMatchGame";
+import PunchTargetGame from "@/components/PunchTargetGame";
 
 export default function GameRoom1({
   currentGameId,
@@ -54,7 +54,7 @@ export default function GameRoom1({
           </div>
         )}
       </div>
-    <PoseMatchGame
+    <PunchTargetGame
 
 roomId={currentGameId!}
 
