@@ -67,9 +67,9 @@ export default function PunchTargetGame({
   const [time, setTime] = useState(GAME_DURATION);
   const [error, setError] = useState<string | null>(null);
 
-  // Host selection
+  // Host detection
   useEffect(() => {
-    if (!players.length) return;
+    if (!players?.length) return;
     const sorted = [...players].sort((a, b) => a.id.localeCompare(b.id));
     isHost.current = sorted[0].id === userId;
   }, [players, userId]);
@@ -90,12 +90,10 @@ export default function PunchTargetGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-
-      console.log("✅ Pose model loaded");
       return true;
     } catch (err: any) {
-      console.error("Model load error:", err);
-      setError("Failed to load AI model. Please refresh.");
+      console.error("Model load failed:", err);
+      setError("Failed to load AI model");
       setState("idle");
       return false;
     }
@@ -113,7 +111,7 @@ export default function PunchTargetGame({
       return true;
     } catch (err) {
       console.error("Camera error:", err);
-      setError("Camera access denied or unavailable.");
+      setError("Camera access failed");
       return false;
     }
   }, []);
@@ -202,14 +200,16 @@ export default function PunchTargetGame({
     rafDetectRef.current = requestAnimationFrame(detect);
   }, [hitTarget, state]);
 
-  // Game Start
+  // Main Game Logic
   useEffect(() => {
     if (!gameActive) {
       setState("idle");
       return;
     }
 
-    const init = async () => {
+    let mounted = true;
+
+    const initGame = async () => {
       targetsRef.current = [];
       scoreRef.current = 0;
       comboRef.current = 0;
@@ -221,10 +221,10 @@ export default function PunchTargetGame({
       setError(null);
 
       const modelOk = await loadModel();
-      if (!modelOk) return;
+      if (!modelOk || !mounted) return;
 
       const cameraOk = await startCamera();
-      if (!cameraOk) return;
+      if (!cameraOk || !mounted) return;
 
       setState("playing");
       detect();
@@ -244,15 +244,16 @@ export default function PunchTargetGame({
       }, 1000);
     };
 
-    init();
+    initGame();
 
     return () => {
+      mounted = false;
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [gameActive, loadModel, startCamera, detect, spawnTarget]);
 
-  // Render loop
+  // Render Loop
   useEffect(() => {
     if (state !== "playing") return;
 
@@ -328,44 +329,19 @@ export default function PunchTargetGame({
 
   if (error) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: "red" }}>
-        <h2>Error</h2>
+      <div style={{ padding: 40, textAlign: "center", color: "#ff5555" }}>
+        <h2>Game Error</h2>
         <p>{error}</p>
-        <button onClick={() => window.location.reload()}>Reload Page</button>
+        <button onClick={() => window.location.reload()}>Reload</button>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100vh",
-        background: "#090914",
-        position: "relative",
-        overflow: "hidden",
-        color: "#fff",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
+    <div style={{ width: "100%", height: "100vh", background: "#090914", position: "relative", overflow: "hidden", color: "#fff" }}>
       {/* HUD */}
       {state === "playing" && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 20,
-            display: "flex",
-            justifyContent: "center",
-            gap: 50,
-            padding: 16,
-            background: "rgba(0,0,0,0.7)",
-            fontSize: "1.5rem",
-            fontWeight: 700,
-          }}
-        >
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, display: "flex", justifyContent: "center", gap: 50, padding: 16, background: "rgba(0,0,0,0.7)", fontSize: "1.5rem", fontWeight: 700 }}>
           <div>⏱ {`00:${String(time).padStart(2, "0")}`}</div>
           <div>⚡ {combo}</div>
           <div>🏆 {score}</div>
@@ -374,18 +350,7 @@ export default function PunchTargetGame({
 
       {/* Leaderboard */}
       {state === "playing" && (
-        <div
-          style={{
-            position: "absolute",
-            top: 90,
-            right: 20,
-            zIndex: 30,
-            background: "rgba(0,0,0,0.6)",
-            padding: 16,
-            borderRadius: 12,
-            minWidth: 210,
-          }}
-        >
+        <div style={{ position: "absolute", top: 90, right: 20, zIndex: 30, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 210 }}>
           <h3>Players</h3>
           {leaderboard.map((p) => (
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", margin: "4px 0" }}>
@@ -402,82 +367,31 @@ export default function PunchTargetGame({
           autoPlay
           muted
           playsInline
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            transform: "scaleX(-1)",
-            opacity: 0.28,
-          }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.28 }}
         />
-        <canvas
-          ref={canvasRef}
-          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-        />
+        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
 
-        {/* Idle */}
         {state === "idle" && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.8)",
-            }}
-          >
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)" }}>
             <div style={{ textAlign: "center" }}>
               <h1>🥊 Punch Targets</h1>
-              <p>Waiting for host to start the game...</p>
+              <p>Waiting for host to start...</p>
             </div>
           </div>
         )}
 
-        {/* Loading */}
         {state === "loading" && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.9)",
-            }}
-          >
-            <h1>Loading AI Model... (this may take 10-20 seconds)</h1>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.9)" }}>
+            <h1>Loading AI Model... (10-20s)</h1>
           </div>
         )}
 
-        {/* Ended */}
         {state === "ended" && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.85)",
-            }}
-          >
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)" }}>
             <div style={{ textAlign: "center", background: "#151528", padding: 50, borderRadius: 20 }}>
               <h1>Game Over</h1>
               <div style={{ fontSize: "6rem", fontWeight: 900, color: "#00d4ff" }}>{score}</div>
-              <button
-                onClick={() => setState("idle")}
-                style={{
-                  marginTop: 20,
-                  padding: "14px 40px",
-                  background: "#0066ff",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 12,
-                }}
-              >
+              <button onClick={() => setState("idle")} style={{ marginTop: 20, padding: "14px 40px", background: "#0066ff", color: "white", border: "none", borderRadius: 12 }}>
                 Exit
               </button>
             </div>
