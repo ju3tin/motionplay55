@@ -56,7 +56,7 @@ export default function PunchTargetGame({
   const areaRef = useRef<HTMLDivElement>(null);
 
   const detectorRef = useRef<any>(null);
-  const rafRef = useRef<number>(0);
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -76,6 +76,7 @@ export default function PunchTargetGame({
   const [finalScore, setFinalScore] = useState(0);
   const [finalCombo, setFinalCombo] = useState(0);
   const [isReady, setIsReady] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const playersList = Array.isArray(playersProp)
     ? playersProp
@@ -84,34 +85,37 @@ export default function PunchTargetGame({
         name: `Player ${i + 1}`,
       }));
 
+  // Host detection
   useEffect(() => {
     if (!playersList.length) return;
     const sorted = [...playersList].sort((a, b) => a.id.localeCompare(b.id));
     isHostRef.current = sorted[0].id === userId;
-    console.log("👑 You are host:", isHostRef.current);
   }, [playersList, userId]);
 
-  const loadModel = useCallback(async () => {
-    setGameState("loading");
-    try {
-      const tf = await import("@tensorflow/tfjs");
-      await import("@tensorflow/tfjs-backend-webgl");
-      await tf.setBackend("webgl");
-      await tf.ready();
+  // === YOUR WORKING TENSORFLOW LOADING ===
+  useEffect(() => {
+    async function load() {
+      try {
+        setGameState("loading");
+        const tf = await import("@tensorflow/tfjs");
+        await import("@tensorflow/tfjs-backend-webgl");
+        await tf.setBackend("webgl");
+        await tf.ready();
 
-      const pd = await import("@tensorflow-models/pose-detection");
-      detectorRef.current = await pd.createDetector(
-        pd.SupportedModels.MoveNet,
-        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
-      );
-      console.log("✅ Model Loaded");
-      return true;
-    } catch (e) {
-      console.error(e);
-      setErrorMsg("Failed to load model");
-      setGameState("idle");
-      return false;
+        const pd = await import("@tensorflow-models/pose-detection");
+        detectorRef.current = await pd.createDetector(
+          pd.SupportedModels.MoveNet,
+          { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
+        );
+        console.log("✅ Model Loaded");
+        setLoaded(true);
+      } catch (err) {
+        console.error("Failed to load pose detector:", err);
+        setErrorMsg("Failed to load AI model");
+        setGameState("idle");
+      }
     }
+    load();
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -156,7 +160,6 @@ export default function PunchTargetGame({
 
   const spawnTarget = useCallback(() => {
     if (!isHostRef.current) return;
-    console.log("🌟 Spawning target");
     send({
       type: "TARGET",
       roomId: effectiveRoomId,
@@ -200,49 +203,148 @@ export default function PunchTargetGame({
 
   const endGame = useCallback(() => {
     setGameState("ended");
-    cancelAnimationFrame(rafRef.current);
+    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
     if (spawnRef.current) clearInterval(spawnRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     setFinalScore(scoreRef.current);
     setFinalCombo(maxComboRef.current);
   }, []);
 
-  const startLoop = useCallback(() => {
+  // Detection loop (your style)
+  const startDetection = useCallback(() => {
+    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+
+    detectionIntervalRef.current = setInterval(async () => {
+      if (!detectorRef.current || !videoRef.current || gameState !== "playing") return;
+
+      try {
+        const poses = await detectorRef.current.estimatePoses(videoRef.current);
+        if (poses?.length) {
+          const pose = poses[0];
+          const area = areaRef.current;
+          if (!area) return;
+
+          const width = area.clientWidth;
+          const height = area.clientHeight;
+          const videoW = videoRef.current.videoWidth || 640;
+          const videoH = videoRef.current.videoHeight || 480;
+
+          const scaleX = width / videoW;
+          const scaleY = height / videoH;
+
+          [9, 10].forEach(i => {
+            const kp = pose.keypoints[i];
+            if (kp?.score > 0.35) {
+              const screenX = width - kp.x * scaleX;
+              const screenY = kp.y * scaleY;
+              checkHit(screenX, screenY);
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Detection error:", e);
+      }
+    }, 80);
+  }, [checkHit, gameState]);
+
+  // Game Control
+  useEffect(() => {
+    if (!gameActive) {
+      setGameState("idle");
+      return;
+    }
+
+    const init = async () => {
+      targetsRef.current = [];
+      scoreRef.current = 0;
+      comboRef.current = 0;
+      maxComboRef.current = 0;
+      idRef.current = 0;
+
+      setScore(0);
+      setCombo(0);
+      setTimeLeft(GAME_DURATION);
+
+      if (!detectorRef.current) {
+        await loadModel();
+      }
+
+      await startCamera();
+      setGameState("countdown");
+
+      let c = 3;
+      setCountdown(c);
+      const cd = setInterval(() => {
+        c--;
+        setCountdown(c);
+        if (c <= 0) {
+          clearInterval(cd);
+          setGameState("playing");
+        }
+      }, 1000);
+    };
+
+    init();
+
+    return () => {
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [gameActive, loadModel, startCamera]);
+
+  // Start detection + render when playing
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
+    startDetection();
+
+    if (isHostRef.current) {
+      spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
+    }
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [gameState, startDetection, spawnTarget, endGame]);
+
+  // Render loop
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
     const canvas = canvasRef.current;
     const area = areaRef.current;
     if (!canvas || !area) return;
 
     const ctx = canvas.getContext("2d")!;
-    console.log("🎨 Render loop started");
-
-    const loop = () => {
-      const now = Date.now();
+    const render = () => {
       const width = area.clientWidth;
       const height = area.clientHeight;
       canvas.width = width;
       canvas.height = height;
       ctx.clearRect(0, 0, width, height);
 
-      // Draw targets
-      targetsRef.current = targetsRef.current.filter(t => {
-        if (!t.hit && now - t.born > TARGET_LIFE) return false;
-        if (t.hit && now - t.born > TARGET_LIFE - 200) return false;
-        return true;
-      });
-
-      if (targetsRef.current.length > 0) {
-        console.log(`Drawing ${targetsRef.current.length} targets`);
-      }
+      const now = Date.now();
+      targetsRef.current = targetsRef.current.filter(t => now - t.born <= TARGET_LIFE);
 
       targetsRef.current.forEach(t => {
         const x = t.x * width;
         const y = t.y * height;
 
         ctx.save();
-        if (t.hit) {
-          const hitAge = (now - t.born) / (TARGET_LIFE - 200);
-          ctx.globalAlpha = Math.max(0, 1 - hitAge * 2);
-        } else {
+        if (!t.hit) {
           const pulse = 1 + Math.sin(now / 300) * 0.06;
           ctx.translate(x, y);
           ctx.scale(pulse, pulse);
@@ -270,136 +372,12 @@ export default function PunchTargetGame({
         ctx.restore();
       });
 
-      rafRef.current = requestAnimationFrame(loop);
+      rafRef.current = requestAnimationFrame(render);
     };
-    rafRef.current = requestAnimationFrame(loop);
+    render();
 
-    // Pose Detection + Visual Wrist Debug
-    let detecting = false;
-    const detectLoop = async () => {
-      if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
-        setTimeout(detectLoop, 100);
-        return;
-      }
-      if (detecting) {
-        setTimeout(detectLoop, 80);
-        return;
-      }
-      detecting = true;
-      try {
-        const poses = await detectorRef.current.estimatePoses(videoRef.current);
-        if (poses?.length) {
-          const pose = poses[0];
-          const area = areaRef.current;
-          if (!area) return;
-
-          const width = area.clientWidth;
-          const height = area.clientHeight;
-          const videoW = videoRef.current.videoWidth || 640;
-          const videoH = videoRef.current.videoHeight || 480;
-
-          const scaleX = width / videoW;
-          const scaleY = height / videoH;
-
-          // Draw wrists for debug
-          const ctx = canvasRef.current?.getContext("2d");
-          if (ctx) {
-            ctx.fillStyle = "lime";
-            [9, 10].forEach(i => {
-              const kp = pose.keypoints[i];
-              if (kp?.score > 0.35) {
-                const screenX = width - kp.x * scaleX;
-                const screenY = kp.y * scaleY;
-                ctx.beginPath();
-                ctx.arc(screenX, screenY, 12, 0, Math.PI * 2);
-                ctx.fill();
-
-                checkHit(screenX, screenY);
-              }
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Detection error:", e);
-      }
-      detecting = false;
-      if (gameState === "playing") setTimeout(detectLoop, 80);
-    };
-    detectLoop();
-  }, [checkHit, gameState]);
-
-  // Game init
-  useEffect(() => {
-    if (!gameActive) {
-      setGameState("idle");
-      return;
-    }
-
-    const init = async () => {
-      targetsRef.current = [];
-      scoreRef.current = 0;
-      comboRef.current = 0;
-      maxComboRef.current = 0;
-      idRef.current = 0;
-
-      setScore(0);
-      setCombo(0);
-      setTimeLeft(GAME_DURATION);
-
-      if (!detectorRef.current) {
-        const ok = await loadModel();
-        if (!ok) return;
-      }
-
-      const camOk = await startCamera();
-      if (!camOk) return;
-
-      setGameState("countdown");
-      let c = 3;
-      setCountdown(c);
-      const cd = setInterval(() => {
-        c--;
-        setCountdown(c);
-        if (c <= 0) {
-          clearInterval(cd);
-          setGameState("playing");
-        }
-      }, 1000);
-    };
-
-    init();
-
-    return () => {
-      if (spawnRef.current) clearInterval(spawnRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [gameActive, loadModel, startCamera]);
-
-  useEffect(() => {
-    if (gameState !== "playing") return;
-
-    startLoop();
-
-    if (isHostRef.current) {
-      spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
-    }
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          endGame();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      if (spawnRef.current) clearInterval(spawnRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [gameState, startLoop, spawnTarget, endGame]);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [gameState]);
 
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
@@ -425,7 +403,6 @@ export default function PunchTargetGame({
                 <div><strong>Room:</strong> {effectiveRoomId}</div>
                 <div><strong>Status:</strong> {status}</div>
                 <div><strong>Players:</strong> {playersList.length}</div>
-                <div><strong>You are host:</strong> {isHostRef.current ? "Yes" : "No"}</div>
               </div>
 
               {onLeave && (
@@ -435,10 +412,7 @@ export default function PunchTargetGame({
               )}
 
               {onReady && !isReady && (
-                <button 
-                  onClick={() => { setIsReady(true); onReady(); }}
-                  style={{ ...css.btn, background: "#00cc66" }}
-                >
+                <button onClick={() => { setIsReady(true); onReady(); }} style={{ ...css.btn, background: "#00cc66" }}>
                   ✅ I'm Ready
                 </button>
               )}
