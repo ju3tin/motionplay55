@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useGameSocket } from '@/lib/socket';
 import CreateRoom from '@/components/CreateRoom';
 import GameRoom from '@/components/GameRoom';
+import PoseMatchGame from '@/components/PoseMatchGame'
 
 export default function Home() {
   const socket = useGameSocket();
@@ -111,6 +112,28 @@ export default function Home() {
             onSendMessage={handleSendMessage}
             onLeave={handleLeave}
           />
+       <PoseMatchGame
+
+    roomId={currentGameId}
+
+    userId={userId}
+
+    players={players}
+
+    onScore={(score)=>{
+
+      socket.emit(
+        "pose-score",
+        {
+          roomId: currentGameId,
+          userId,
+          score
+        }
+      );
+
+    }}
+
+  />
         )}
       </div>
     </main>
