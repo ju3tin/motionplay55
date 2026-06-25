@@ -8,13 +8,12 @@ interface Message {
   room?: string;
   userId?: string;
   message?: string;
-  timestamp?: number;
-  fromAdmin?: boolean;
   players?: number;
   maxPlayers?: number;
   readyCount?: number;
   totalPlayers?: number;
   timeLeft?: number;
+  fromAdmin?: boolean;
   [key: string]: any;
 }
 
@@ -30,100 +29,67 @@ export function useGameSocket() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const connect = (admin = false, token = '') => {
+  const connect = (admin = false, token = "your-super-secret-admin-token") => {
     let url = WS_URL;
-    if (admin && token) {
-      url += `?admin=true&token=${token}`;
-    }
-
-    console.log("🔌 Connecting to:", url);
+    if (admin) url += `?admin=true&token=${token}`;
 
     const ws = new WebSocket(url);
     socketRef.current = ws;
 
     ws.onopen = () => {
-      console.log("✅ WebSocket Connected!");
+      console.log("✅ Connected");
       setIsConnected(true);
     };
 
     ws.onmessage = (event) => {
-      try {
-        const data: Message = JSON.parse(event.data);
-        console.log("📨 Received:", data);
+      const data: Message = JSON.parse(event.data);
+      console.log("📨", data.event, data);
 
-        switch (data.event) {
-          case "connected":
-            setIsAdmin(!!data.isAdmin);
-            break;
-
-          case "room-created":
-          case "room-joined":
-            setCurrentRoom(data.room || null);
-            setPlayers(data.players || 1);
-            setMaxPlayers(data.maxPlayers || 4);
-            break;
-
-          case "player-joined":
-          case "player-left":
-            setPlayers(data.players || 0);
-            break;
-
-          case "ready-update":
-            setReadyCount(data.readyCount || 0);
-            setPlayers(data.totalPlayers || 0);
-            break;
-
-          case "countdown":
-            setCountdown(data.timeLeft ?? null);
-            break;
-
-          case "game-start":
-            setStatus('playing');
-            setCountdown(null);
-            break;
-
-          case "chat":
-          case "message":
-            setMessages(prev => [...prev, data]);
-            break;
-        }
-      } catch (err) {
-        console.error("Failed to parse message:", err);
+      switch (data.event) {
+        case "connected":
+          setIsAdmin(!!data.isAdmin);
+          break;
+        case "room-created":
+        case "room-joined":
+          setCurrentRoom(data.room!);
+          setPlayers(data.players || 1);
+          setMaxPlayers(data.maxPlayers || 4);
+          break;
+        case "player-joined":
+        case "player-left":
+          setPlayers(data.players || 0);
+          break;
+        case "ready-update":
+          setReadyCount(data.readyCount || 0);
+          setPlayers(data.totalPlayers || 0);
+          break;
+        case "countdown":
+          setCountdown(data.timeLeft ?? null);
+          break;
+        case "game-start":
+          setStatus("playing");
+          setCountdown(null);
+          break;
+        case "chat":
+          setMessages(prev => [...prev, data]);
+          break;
       }
     };
 
-    ws.onerror = (error) => console.error("❌ WebSocket Error:", error);
-    ws.onclose = () => {
-      console.log("🔌 WebSocket Disconnected");
-      setIsConnected(false);
-    };
+    ws.onclose = () => setIsConnected(false);
   };
 
   const send = (data: any) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(data));
-    } else {
-      console.warn("Socket not connected");
     }
   };
 
-  const disconnect = () => {
-    socketRef.current?.close();
-  };
+  const disconnect = () => socketRef.current?.close();
 
   return {
-    isConnected,
-    isAdmin,
-    currentRoom,
-    players,
-    maxPlayers,
-    readyCount,
-    status,
-    countdown,
-    messages,
-    connect,
-    send,
-    disconnect,
-    setMessages,
+    isConnected, isAdmin, currentRoom, players, maxPlayers,
+    readyCount, status, countdown, messages,
+    connect, send, disconnect, setMessages
   };
 }
