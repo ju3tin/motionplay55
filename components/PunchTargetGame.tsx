@@ -104,11 +104,11 @@ export default function PunchTargetGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-      console.log("✅ TensorFlow Model Loaded");
+      console.log("✅ Model Loaded");
       return true;
     } catch (e: any) {
-      console.error("Model load failed", e);
-      setErrorMsg("Failed to load AI model");
+      console.error(e);
+      setErrorMsg("Failed to load model");
       setGameState("idle");
       return false;
     }
@@ -126,18 +126,17 @@ export default function PunchTargetGame({
       console.log("✅ Camera started");
       return true;
     } catch (err) {
-      console.error("Camera error", err);
+      console.error(err);
       setErrorMsg("Camera access denied");
       return false;
     }
   }, []);
 
-  // Receive targets from host
+  // Receive targets
   useEffect(() => {
     const listener = (e: any) => {
       const data = e.detail;
       if (data.type === "TARGET") {
-        console.log("📍 Received target", data.target);
         const t = data.target;
         const area = areaRef.current;
         targetsRef.current.push({
@@ -156,7 +155,6 @@ export default function PunchTargetGame({
 
   const spawnTarget = useCallback(() => {
     if (!isHostRef.current) return;
-    console.log("🌟 Host spawning target");
     send({
       type: "TARGET",
       roomId: effectiveRoomId,
@@ -192,6 +190,15 @@ export default function PunchTargetGame({
     }
   }, [send, effectiveRoomId, userId]);
 
+  const endGame = useCallback(() => {
+    setGameState("ended");
+    cancelAnimationFrame(rafRef.current);
+    if (spawnRef.current) clearInterval(spawnRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+    setFinalScore(scoreRef.current);
+    setFinalCombo(maxComboRef.current);
+  }, []);
+
   const startLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const area = areaRef.current;
@@ -205,14 +212,12 @@ export default function PunchTargetGame({
       canvas.height = height;
       ctx.clearRect(0, 0, width, height);
 
-      // Expire targets
       targetsRef.current = targetsRef.current.filter(t => {
         if (!t.hit && now - t.born > TARGET_LIFE) return false;
         if (t.hit && now - t.born > TARGET_LIFE - 200) return false;
         return true;
       });
 
-      // Draw targets
       targetsRef.current.forEach(t => {
         const age = now - t.born;
         ctx.save();
@@ -251,7 +256,6 @@ export default function PunchTargetGame({
     };
     rafRef.current = requestAnimationFrame(loop);
 
-    // Pose Detection
     let detecting = false;
     const detectLoop = async () => {
       if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
@@ -273,15 +277,6 @@ export default function PunchTargetGame({
           const scaleY = height / (videoRef.current.videoHeight || 480);
           const pose = poses[0];
 
-          // Draw skeleton for debugging (optional)
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const ctx = canvas.getContext("2d")!;
-            ctx.strokeStyle = "#00ffcc";
-            ctx.lineWidth = 6;
-            // Simple wrist detection for now
-          }
-
           const lw = pose.keypoints[9];
           if (lw?.score > 0.35) checkHit(width - lw.x * scaleX, lw.y * scaleY);
 
@@ -289,7 +284,7 @@ export default function PunchTargetGame({
           if (rw?.score > 0.35) checkHit(width - rw.x * scaleX, rw.y * scaleY);
         }
       } catch (e) {
-        console.error("Pose detection error", e);
+        console.error("Detection error:", e);
       }
       detecting = false;
       if (gameState === "playing") setTimeout(detectLoop, 80);
@@ -297,7 +292,7 @@ export default function PunchTargetGame({
     detectLoop();
   }, [checkHit, gameState]);
 
-  // Game start
+  // Game Control
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -305,7 +300,6 @@ export default function PunchTargetGame({
     }
 
     const init = async () => {
-      console.log("🚀 Game starting...");
       targetsRef.current = [];
       scoreRef.current = 0;
       comboRef.current = 0;
@@ -333,7 +327,6 @@ export default function PunchTargetGame({
         if (c <= 0) {
           clearInterval(cd);
           setGameState("playing");
-          console.log("🎉 Game Started!");
         }
       }, 1000);
     };
@@ -346,8 +339,10 @@ export default function PunchTargetGame({
     };
   }, [gameActive, loadModel, startCamera]);
 
+  // Start loops when playing
   useEffect(() => {
     if (gameState !== "playing") return;
+
     startLoop();
 
     if (isHostRef.current) {
@@ -357,7 +352,7 @@ export default function PunchTargetGame({
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          endGame();
+          endGame();   // ← now properly in scope
           return 0;
         }
         return prev - 1;
@@ -371,17 +366,116 @@ export default function PunchTargetGame({
     };
   }, [gameState, startLoop, spawnTarget, endGame]);
 
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
+
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   return (
     <div style={css.root}>
-      {/* ... same UI as before ... */}
-      {/* (Keep the return JSX from previous version) */}
+      {(gameState === "playing" || gameState === "ended") && (
+        <div style={css.hud}>
+          <div>⏱ {`${Math.floor(timeLeft / 60).toString().padStart(2, "0")}:${(timeLeft % 60).toString().padStart(2, "0")}`}</div>
+          <div>⚡ {combo}</div>
+          <div>🏆 {score}</div>
+        </div>
+      )}
+
+      <div ref={areaRef} style={css.area}>
+        <video ref={videoRef} style={css.video} muted playsInline autoPlay />
+        <canvas ref={canvasRef} style={css.canvas} />
+
+        {(gameState === "idle" || gameState === "loading") && (
+          <div style={css.overlay}>
+            <div style={css.card}>
+              <h1 style={css.bigTitle}>🥊 Punch Targets</h1>
+              <div style={{ margin: "20px 0", textAlign: "left" }}>
+                <div><strong>Room:</strong> {effectiveRoomId}</div>
+                <div><strong>Status:</strong> {status}</div>
+                <div><strong>Players:</strong> {playersList.length}</div>
+              </div>
+
+              {onLeave && (
+                <button onClick={onLeave} style={{ ...css.btn, background: "#ff4444", marginBottom: 12 }}>
+                  Leave Game
+                </button>
+              )}
+
+              {onReady && !isReady && (
+                <button 
+                  onClick={() => { setIsReady(true); onReady(); }}
+                  style={{ ...css.btn, background: "#00cc66" }}
+                >
+                  ✅ I'm Ready
+                </button>
+              )}
+
+              {isReady && <p style={{ color: "#00cc66" }}>Waiting for others...</p>}
+            </div>
+          </div>
+        )}
+
+        {gameState === "countdown" && (
+          <div style={css.overlay}>
+            <span style={css.countdownNum}>{countdown || "GO!"}</span>
+          </div>
+        )}
+
+        {gameState === "ended" && (
+          <div style={css.overlay}>
+            <div style={css.card}>
+              <h1 style={css.bigTitle}>Game Over!</h1>
+              <div style={css.statsGrid}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ color: "#aaa" }}>Score</div>
+                  <div style={{ fontSize: "3.8rem", fontWeight: 900, color: "#00d4ff" }}>{finalScore}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ color: "#aaa" }}>Max Combo</div>
+                  <div style={{ fontSize: "3.8rem", fontWeight: 900, color: "#ffaa00" }}>{finalCombo}</div>
+                </div>
+              </div>
+              <button onClick={() => setGameState("idle")} style={css.btn}>Play Again</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {gameState === "playing" && (
+        <div style={css.leaderboard}>
+          <h3>Players</h3>
+          {leaderboard.map(p => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", margin: "6px 0" }}>
+              <span>{p.name ?? p.id.slice(0, 8)}</span>
+              <span>{p.score ?? 0}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// Add the css object at the bottom (same as before)
 const css: Record<string, React.CSSProperties> = {
-  // ... paste the css from previous message
+  root: { width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "#fff", fontFamily: "system-ui, sans-serif" },
+  hud: { position: "absolute", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", display: "flex", justifyContent: "center", gap: 40, zIndex: 50, fontSize: "1.4rem", fontWeight: 700 },
+  area: { position: "absolute", inset: 0 },
+  video: { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.22 },
+  canvas: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" },
+  overlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 },
+  card: { background: "rgba(20,20,40,0.95)", borderRadius: 20, padding: "40px", textAlign: "center", maxWidth: 460 },
+  bigTitle: { fontSize: "2.8rem", fontWeight: 900, marginBottom: 16, background: "linear-gradient(135deg, #00d4ff, #0066ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
+  btn: { background: "#0066ff", color: "#fff", border: "none", padding: "14px 32px", fontSize: "1.1rem", borderRadius: 12, cursor: "pointer", width: "100%", marginTop: 12, fontWeight: 700 },
+  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4ff", textShadow: "0 0 60px #00d4ff" },
+  statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, margin: "30px 0" },
+  leaderboard: { position: "absolute", top: 80, right: 20, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 200, zIndex: 30 },
 };
