@@ -834,7 +834,13 @@ y:p.y
 
 
 const targetPoints =
-target.points;
+target.points.map((p:any)=>({
+
+x:p[0],
+
+y:p[1]
+
+}));
 
 
 
