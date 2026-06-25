@@ -9,17 +9,18 @@ import {
 import { POSES } from "./poses";
 
 
+
 interface Props {
 
-  roomId:string;
+roomId:string;
 
-  userId:string;
+userId:string;
 
-  players:number;
+players:number;
 
-  send:(data:any)=>void;
+send:(data:any)=>void;
 
-  gameActive:boolean;
+gameActive:boolean;
 
 }
 
@@ -27,17 +28,17 @@ interface Props {
 
 interface Keypoint {
 
-  x:number;
+x:number;
 
-  y:number;
+y:number;
 
-  score:number;
+score:number;
 
 }
 
 
 
-const BONES:[number,number][] = [
+const BONES:[number,number][]=[
 
 [0,1],
 [0,2],
@@ -68,6 +69,7 @@ const BONES:[number,number][] = [
 
 
 
+
 export default function PoseMatchGame({
 
 roomId,
@@ -89,43 +91,51 @@ const canvasRef =
 useRef<HTMLCanvasElement>(null);
 
 
+
 const detector =
 useRef<any>(null);
 
 
-const points =
+
+const playerPoints =
 useRef<Keypoint[]>([]);
 
 
 
-const [modelReady,setModelReady] =
+const [modelReady,setModelReady]=
 useState(false);
 
 
-const [cameraReady,setCameraReady] =
+
+const [cameraReady,setCameraReady]=
 useState(false);
 
 
-const [score,setScore] =
-useState(0);
 
-
-const [time,setTime] =
-useState(30);
-
-
-const [target,setTarget] =
+const [target,setTarget]=
 useState<any>(
-POSES.tPose
+POSES.myPose
 );
 
 
 
+const [time,setTime]=
+useState(30);
 
 
-//
-// LOAD TENSORFLOW WHILE WAITING
-//
+
+const [score,setScore]=
+useState(0);
+
+
+
+
+
+
+
+
+
+// LOAD AI WHILE WAITING
 
 useEffect(()=>{
 
@@ -142,9 +152,8 @@ await import(
 );
 
 
-await tf.setBackend(
-"webgl"
-);
+
+await tf.setBackend("webgl");
 
 
 await tf.ready();
@@ -159,6 +168,7 @@ await import(
 
 
 detector.current =
+
 await pd.createDetector(
 
 pd.SupportedModels.MoveNet,
@@ -188,6 +198,7 @@ setModelReady(true);
 load();
 
 
+
 },[]);
 
 
@@ -198,9 +209,7 @@ load();
 
 
 
-//
-// PICK RANDOM POSE
-//
+// START GAME
 
 useEffect(()=>{
 
@@ -210,24 +219,22 @@ return;
 
 
 
-const keys =
+const names =
 Object.keys(POSES);
 
 
 
 const random =
-keys[
+names[
 Math.floor(
-Math.random()*keys.length
+Math.random()*names.length
 )
 ];
 
 
 
 setTarget(
-POSES[
-random as keyof typeof POSES
-]
+POSES[random as keyof typeof POSES]
 );
 
 
@@ -248,9 +255,9 @@ gameActive
 
 
 
-//
-// CAMERA STARTS ONLY PLAYING
-//
+
+
+// CAMERA ONLY PLAYING
 
 useEffect(()=>{
 
@@ -266,7 +273,9 @@ return;
 async function start(){
 
 
+
 const stream =
+
 await navigator
 .mediaDevices
 .getUserMedia({
@@ -298,6 +307,10 @@ setCameraReady(true);
 
 
 
+detect();
+
+
+
 }
 
 
@@ -319,9 +332,68 @@ modelReady
 
 
 
-//
+async function detect(){
+
+
+while(true){
+
+
+
+if(
+videoRef.current &&
+detector.current
+){
+
+
+
+const poses =
+
+await detector.current
+.estimatePoses(
+
+videoRef.current
+
+);
+
+
+
+if(poses.length){
+
+
+playerPoints.current =
+poses[0].keypoints;
+
+
+}
+
+
+
+}
+
+
+
+await new Promise(r=>
+
+setTimeout(r,80)
+
+);
+
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
 // TIMER
-//
 
 useEffect(()=>{
 
@@ -359,7 +431,6 @@ userId
 
 return 0;
 
-
 }
 
 
@@ -374,11 +445,8 @@ return t-1;
 
 
 
-return()=>{
+return()=>clearInterval(timer);
 
-clearInterval(timer);
-
-};
 
 
 },[
@@ -395,94 +463,9 @@ gameActive
 
 
 
-//
-// MOVE NET LOOP
-//
-
-useEffect(()=>{
-
-
-if(
-!cameraReady
-)
-return;
-
-
-
-let active=true;
-
-
-
-async function loop(){
-
-
-while(active){
-
-
-
-const result =
-
-await detector.current
-.estimatePoses(
-
-videoRef.current!
-
-);
-
-
-
-if(result.length){
-
-points.current =
-result[0].keypoints;
-
-}
-
-
-
-await new Promise(r=>
-
-setTimeout(r,80)
-
-);
-
-
-
-}
-
-
-
-}
-
-
-
-loop();
-
-
-
-return()=>{
-
-active=false;
-
-};
-
-
-
-},[
-cameraReady
-]);
-
-
-
-
-
-
-
-
-
 function compare(
 a:any[],
-b:any[]
+b:number[][]
 ){
 
 
@@ -499,9 +482,9 @@ i++
 
 total += Math.hypot(
 
-a[i].x-b[i].x,
+a[i].x-b[i][0],
 
-a[i].y-b[i].y
+a[i].y-b[i][1]
 
 );
 
@@ -531,16 +514,13 @@ return Math.max(
 
 
 
-//
-// DRAW CAMERA + SKELETON
-//
+
+// DRAW
 
 useEffect(()=>{
 
 
-if(
-!cameraReady
-)
+if(!cameraReady)
 return;
 
 
@@ -557,14 +537,13 @@ canvas.getContext("2d")!;
 function resize(){
 
 canvas.width =
-window.innerWidth;
+innerWidth;
 
 
 canvas.height =
-window.innerHeight;
+innerHeight;
 
 }
-
 
 
 resize();
@@ -591,9 +570,7 @@ videoRef.current!;
 
 
 
-if(
-video.readyState < 2
-)
+if(video.readyState<2)
 return;
 
 
@@ -609,6 +586,8 @@ canvas.width,
 canvas.height
 
 );
+
+
 
 
 
@@ -631,6 +610,7 @@ const h =
 video.videoHeight*scale;
 
 
+
 const dx =
 (canvas.width-w)/2;
 
@@ -642,7 +622,7 @@ const dy =
 
 
 
-// mirror camera
+// MIRROR CAMERA
 
 ctx.save();
 
@@ -657,7 +637,6 @@ ctx.scale(
 -1,
 1
 );
-
 
 
 ctx.drawImage(
@@ -684,21 +663,15 @@ ctx.restore();
 
 
 
+// PLAYER SKELETON
 
 
 const k =
-points.current;
+playerPoints.current;
 
 
 
-if(k.length){
-
-
-
-function map(
-p:Keypoint
-){
-
+function map(p:Keypoint){
 
 return {
 
@@ -706,34 +679,28 @@ x:
 
 dx+w-(p.x*scale),
 
-
 y:
 
 dy+(p.y*scale)
 
 };
 
-
 }
 
 
 
-
-
-
-// bones
+ctx.strokeStyle="#00ffcc";
 
 ctx.lineWidth=8;
 
-ctx.strokeStyle="#00ffcc";
 
 
 BONES.forEach(([a,b])=>{
 
 
 if(
-k[a].score < .3 ||
-k[b].score < .3
+!k[a] ||
+!k[b]
 )
 return;
 
@@ -773,14 +740,8 @@ ctx.stroke();
 
 
 
-// joints
 
 k.forEach(p=>{
-
-
-if(p.score < .3)
-return;
-
 
 
 const pos =
@@ -788,7 +749,7 @@ map(p);
 
 
 
-ctx.fillStyle="#ffffff";
+ctx.fillStyle="white";
 
 
 ctx.beginPath();
@@ -800,14 +761,13 @@ pos.x,
 
 pos.y,
 
-10,
+9,
 
 0,
 
 Math.PI*2
 
 );
-
 
 
 ctx.fill();
@@ -822,26 +782,14 @@ ctx.fill();
 
 
 
-const current =
-k.map(p=>({
-
-x:p.x,
-
-y:p.y
-
-}));
 
 
 
-const targetPoints =
-target.points.map((p:any)=>({
 
-x:p[0],
+// SCORE
 
-y:p[1]
 
-}));
-
+if(k.length){
 
 
 const s =
@@ -849,9 +797,9 @@ Math.round(
 
 compare(
 
-current,
+k,
 
-targetPoints
+target.points
 
 )
 
@@ -887,30 +835,53 @@ score:s
 
 
 
-// ghost target
+// GHOST TARGET
 
 
 ctx.globalAlpha=.35;
 
+
 ctx.strokeStyle="#ff0066";
+
 
 ctx.lineWidth=10;
 
 
 
-for(
-let i=1;
-i<target.points.length;
-i++
+function targetMap(
+p:number[]
 ){
 
+return {
 
-const a =
-target.points[i-1];
+x:
+
+canvas.width/2+p[0]*120,
 
 
-const b =
-target.points[i];
+y:
+
+canvas.height/2+p[1]*120
+
+};
+
+}
+
+
+
+BONES.forEach(([a,b])=>{
+
+
+const A =
+targetMap(
+target.points[a]
+);
+
+
+const B =
+targetMap(
+target.points[b]
+);
 
 
 
@@ -918,30 +889,62 @@ ctx.beginPath();
 
 
 ctx.moveTo(
-
-canvas.width/2+a[0]*100,
-
-canvas.height/2+a[1]*100
-
+A.x,
+A.y
 );
-
 
 
 ctx.lineTo(
-
-canvas.width/2+b[0]*100,
-
-canvas.height/2+b[1]*100
-
+B.x,
+B.y
 );
-
 
 
 ctx.stroke();
 
 
 
-}
+});
+
+
+
+
+
+target.points.forEach((p:number[])=>{
+
+
+const pos =
+targetMap(p);
+
+
+
+ctx.fillStyle="#ff0066";
+
+
+ctx.beginPath();
+
+
+ctx.arc(
+
+pos.x,
+
+pos.y,
+
+8,
+
+0,
+
+Math.PI*2
+
+);
+
+
+
+ctx.fill();
+
+
+
+});
 
 
 
@@ -982,6 +985,7 @@ target
 
 
 
+
 return (
 
 <div
@@ -992,11 +996,11 @@ width:"100vw",
 
 height:"100vh",
 
-position:"relative",
+background:"#000",
 
 overflow:"hidden",
 
-background:"#000"
+position:"relative"
 
 }}
 
@@ -1048,11 +1052,9 @@ top:20,
 
 left:20,
 
-color:"#fff",
+color:"white",
 
-fontSize:32,
-
-fontFamily:"monospace"
+fontSize:30
 
 }}
 
@@ -1071,8 +1073,8 @@ TIME: {time}
 </div>
 
 
-
 </div>
+
 
 );
 
