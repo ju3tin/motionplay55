@@ -10,11 +10,11 @@ export interface Player {
 }
 
 export interface GameProps {
-  currentGameId: string;
-  players: Player[] | number;        // ✅ Accept both array and number
+  roomId: string;           // ← Changed to match your usage
   userId: string;
+  players: any;             // Accepts number or Player[]
   send: (data: any) => void;
-  status: string;
+  gameActive: boolean;
 }
 
 const GAME_DURATION = 60;
@@ -34,11 +34,11 @@ interface Target {
 type GameState = "idle" | "loading" | "countdown" | "playing" | "ended";
 
 export default function PunchTargetGame({
-  currentGameId,
-  players: playersProp,
+  roomId,
   userId,
+  players: playersProp,
   send,
-  status,
+  gameActive,
 }: GameProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,13 +65,11 @@ export default function PunchTargetGame({
   const [finalScore, setFinalScore] = useState(0);
   const [finalCombo, setFinalCombo] = useState(0);
 
-  const gameActive = status === "playing";
-
-  // Convert players prop to array for leaderboard
-  const playersList: Player[] = Array.isArray(playersProp)
+  // Convert players prop
+  const playersList = Array.isArray(playersProp)
     ? playersProp
-    : Array.from({ length: typeof playersProp === "number" ? playersProp : 0 }, (_, i) => ({
-        id: `player-${i}`,
+    : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
+        id: `p${i}`,
         name: `Player ${i + 1}`,
       }));
 
@@ -105,7 +103,6 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // Start Camera
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -147,10 +144,10 @@ export default function PunchTargetGame({
     if (!isHostRef.current) return;
     send({
       type: "TARGET",
-      roomId: currentGameId,
+      roomId,
       target: { id: idRef.current++, x: Math.random(), y: Math.random(), r: 40 },
     });
-  }, [send, currentGameId]);
+  }, [send, roomId]);
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
@@ -173,31 +170,24 @@ export default function PunchTargetGame({
 
       send({
         type: "SCORE",
-        roomId: currentGameId,
+        roomId,
         userId,
         score: scoreRef.current,
         combo: comboRef.current,
       });
     }
-  }, [send, currentGameId, userId]);
+  }, [send, roomId, userId]);
 
   const endGame = useCallback(() => {
     setGameState("ended");
     cancelAnimationFrame(rafRef.current);
     if (spawnRef.current) clearInterval(spawnRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
-
     setFinalScore(scoreRef.current);
     setFinalCombo(maxComboRef.current);
   }, []);
 
-  // ... (rest of the code remains the same - loops, effects, etc.)
-
-  // Main game control, startLoop, etc. are the same as previous version
-  // I'll keep them short here for brevity — use the same logic from last response
-
   const startLoop = useCallback(() => {
-    // Same as previous version...
     const canvas = canvasRef.current;
     const area = areaRef.current;
     if (!canvas || !area) return;
@@ -267,14 +257,13 @@ export default function PunchTargetGame({
         setTimeout(detectLoop, 100);
         return;
       }
-      if (detecting) {
-        setTimeout(detectLoop, 80);
-        return;
-      }
+      if (detecting) { setTimeout(detectLoop, 80); return; }
       detecting = true;
       try {
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
         if (poses?.length) {
+          const area = areaRef.current;
+          if (!area) return;
           const { width, height } = area.getBoundingClientRect();
           const scaleX = width / (videoRef.current.videoWidth || 640);
           const scaleY = height / (videoRef.current.videoHeight || 480);
@@ -293,7 +282,7 @@ export default function PunchTargetGame({
     detectLoop();
   }, [checkHit, gameState]);
 
-  // Game start logic (same as before)
+  // Game initialization
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -342,55 +331,7 @@ export default function PunchTargetGame({
 
   useEffect(() => {
     if (gameState !== "playing") return;
+
     startLoop();
 
-    if (isHostRef.current) {
-      spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
-    }
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          endGame();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      if (spawnRef.current) clearInterval(spawnRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [gameState, startLoop, spawnTarget, endGame]);
-
-  const leaderboard = playersList.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-
-  // ... rest of return JSX same as previous version
-
-  return (
-    <div style={css.root}>
-      {/* HUD, Video, Canvas, Overlays, Leaderboard - same as last version */}
-      {/* (Copy the return statement from the previous message) */}
-    </div>
-  );
-}
-
-// Styles (same)
-const css: Record<string, React.CSSProperties> = {
-  root: { width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "#fff", fontFamily: "system-ui, sans-serif" },
-  hud: { position: "absolute", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", display: "flex", justifyContent: "center", gap: 40, zIndex: 50, fontSize: "1.4rem", fontWeight: 700 },
-  area: { position: "absolute", inset: 0 },
-  video: { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.22 },
-  canvas: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" },
-  overlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 },
-  card: { background: "rgba(20,20,40,0.95)", borderRadius: 20, padding: "40px", textAlign: "center", maxWidth: 420 },
-  bigTitle: { fontSize: "2.8rem", fontWeight: 900, marginBottom: 16, background: "linear-gradient(135deg, #00d4ff, #0066ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
-  hint: { color: "#aaa", lineHeight: 1.6 },
-  error: { color: "#ff5555" },
-  btn: { background: "#0066ff", color: "#fff", border: "none", padding: "14px 32px", fontSize: "1.1rem", borderRadius: 12, cursor: "pointer", width: "100%", marginTop: 16, fontWeight: 700 },
-  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4ff", textShadow: "0 0 60px #00d4ff" },
-  statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, margin: "30px 0" },
-  leaderboard: { position: "absolute", top: 80, right: 20, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 200, zIndex: 30 },
-};
+    if (isHostRef.current)
