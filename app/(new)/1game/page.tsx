@@ -2,472 +2,426 @@
 
 import { useEffect, useRef, useState } from "react";
 
+interface Point {
+  x:number;
+  y:number;
+}
+
 interface Keypoint {
-  x: number;
-  y: number;
-  score: number;
-  name: string;
+  x:number;
+  y:number;
+  score:number;
 }
 
-interface SavedPose {
-  name: string;
-  pose: {
-    x: number;
-    y: number;
-  }[];
-}
-
-const SKELETON_CONNECTIONS: [number, number][] = [
-  [0, 1], [0, 2], [1, 3], [2, 4],
-  [5, 6],
-  [5, 7], [7, 9],
-  [6, 8], [8, 10],
-  [5, 11], [6, 12],
-  [11, 12],
-  [11, 13], [13, 15],
-  [12, 14], [14, 16],
+const CONNECTIONS:[number,number][] = [
+ [5,6],[5,7],[7,9],[6,8],[8,10],
+ [5,11],[6,12],[11,12],
+ [11,13],[13,15],
+ [12,14],[14,16],
+ [0,1],[1,3],
+ [0,2],[2,4]
 ];
 
-export default function PoseCapturePage() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const modelRef = useRef<any>(null);
-  const keypointsRef = useRef<Keypoint[]>([]);
-  const rafRef = useRef<number>(0);
+// target poses
+const TARGETS = [
+{
+ name:"T Pose",
+ pose:[
+ {x:0,y:-2},
+ {x:0,y:-2},
+ {x:-.5,y:-1.8},
+ {x:.5,y:-1.8},
+ {x:-1.8,y:-1},
+ {x:1.8,y:-1},
+ {x:-1,y:0},
+ {x:1,y:0},
+ {x:-1.2,y:1.2},
+ {x:1.2,y:1.2},
+ {x:-.7,y:1.5},
+ {x:.7,y:1.5},
+ {x:-.8,y:2.5},
+ {x:.8,y:2.5},
+ {x:-.8,y:3.5},
+ {x:.8,y:3.5},
+ {x:-.8,y:3.5},
+ ]
+}
+];
 
-  const [ready, setReady] = useState(false);
-  const [status, setStatus] = useState("Loading TensorFlow...");
-  const [poseName, setPoseName] = useState("");
-  const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
 
-  function normalizePose(keypoints: Keypoint[]) {
-    const leftHip = keypoints[11];
-    const rightHip = keypoints[12];
+export default function Page(){
 
-    if (!leftHip || !rightHip) return null;
+const videoRef=useRef<HTMLVideoElement>(null);
+const canvasRef=useRef<HTMLCanvasElement>(null);
 
-    const centerX = (leftHip.x + rightHip.x) / 2;
-    const centerY = (leftHip.y + rightHip.y) / 2;
+const detector=useRef<any>();
+const points=useRef<Keypoint[]>([]);
 
-    const leftShoulder = keypoints[5];
-    const rightShoulder = keypoints[6];
+const [ready,setReady]=useState(false);
+const [score,setScore]=useState(0);
+const [level,setLevel]=useState(0);
+const [hold,setHold]=useState(0);
 
-    const torsoSize =
-      Math.hypot(
-        ((leftShoulder.x + rightShoulder.x) / 2) - centerX,
-        ((leftShoulder.y + rightShoulder.y) / 2) - centerY
-      ) || 1;
 
-    return keypoints.map((kp) => ({
-      x: (kp.x - centerX) / torsoSize,
-      y: (kp.y - centerY) / torsoSize,
-    }));
-  }
 
- function startSaveCountdown() {
-  if (saving) return;
+function normalize(k:Keypoint[]){
 
-  setSaving(true);
-  setCountdown(3);
+const hipX=(k[11].x+k[12].x)/2;
+const hipY=(k[11].y+k[12].y)/2;
 
-  let count = 3;
+const size=Math.hypot(
+ k[5].x-k[6].x,
+ k[5].y-k[6].y
+)||1;
 
-  const interval = setInterval(() => {
-    count--;
 
-    if (count > 0) {
-      setCountdown(count);
-      return;
-    }
+return k.map(p=>({
+x:(p.x-hipX)/size,
+y:(p.y-hipY)/size
+}));
 
-    clearInterval(interval);
-
-    const pose =
-      normalizePose(keypointsRef.current);
-
-    if (!pose) {
-      setCountdown(null);
-      setSaving(false);
-      alert("No pose detected");
-      return;
-    }
-
-    const entry: SavedPose = {
-      name:
-        poseName ||
-        `Pose ${savedPoses.length + 1}`,
-      pose,
-    };
-
-    setSavedPoses((p) => [
-      ...p,
-      entry,
-    ]);
-
-    setCountdown(0);
-
-    setTimeout(() => {
-      setCountdown(null);
-      setSaving(false);
-      setPoseName("");
-    }, 1000);
-  }, 1000);
 }
 
-  useEffect(() => {
-    let cancelled = false;
 
-    (async () => {
-      try {
-        const tf = await import("@tensorflow/tfjs");
-        await import("@tensorflow/tfjs-backend-webgl");
 
-        await tf.setBackend("webgl");
-        await tf.ready();
+function compare(
+a:Point[],
+b:Point[]
+){
 
-        const pd = await import("@tensorflow-models/pose-detection");
+let total=0;
 
-        const detector = await pd.createDetector(
-          pd.SupportedModels.MoveNet,
-          {
-            modelType:
-              pd.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          }
-        );
+for(let i=0;i<a.length;i++){
 
-        if (cancelled) return;
+const d=Math.hypot(
+a[i].x-b[i].x,
+a[i].y-b[i].y
+);
 
-        modelRef.current = detector;
+total+=d;
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: "user",
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-          });
+}
 
-        const video = videoRef.current!;
+const avg=total/a.length;
 
-        video.srcObject = stream;
 
-        await new Promise<void>((res) => {
-          video.onloadedmetadata = () => res();
-        });
+return Math.max(
+0,
+100-avg*35
+);
 
-        await video.play();
+}
 
-        setReady(true);
-        setStatus("");
-      } catch (err: any) {
-        setStatus(err.message);
-      }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
-  useEffect(() => {
-    if (!ready) return;
+useEffect(()=>{
 
-    let active = true;
+(async()=>{
 
-    const loop = async () => {
-      while (active) {
-        try {
-          const poses =
-            await modelRef.current.estimatePoses(
-              videoRef.current
-            );
+const tf=await import("@tensorflow/tfjs");
+await import("@tensorflow/tfjs-backend-webgl");
 
-          if (poses?.length) {
-            keypointsRef.current =
-              poses[0].keypoints;
-          }
-        } catch {}
+await tf.setBackend("webgl");
+await tf.ready();
 
-        await new Promise((r) =>
-          setTimeout(r, 80)
-        );
-      }
-    };
 
-    loop();
+const pd=
+await import("@tensorflow-models/pose-detection");
 
-    return () => {
-      active = false;
-    };
-  }, [ready]);
 
-  useEffect(() => {
-    const resize = () => {
-      const canvas = canvasRef.current;
+detector.current=
+await pd.createDetector(
+pd.SupportedModels.MoveNet,
+{
+modelType:
+pd.movenet.modelType
+.SINGLEPOSE_LIGHTNING
+}
+);
 
-      if (!canvas) return;
 
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
 
-    resize();
+const stream=
+await navigator.mediaDevices
+.getUserMedia({
+video:true
+});
 
-    window.addEventListener(
-      "resize",
-      resize
-    );
 
-    return () =>
-      window.removeEventListener(
-        "resize",
-        resize
-      );
-  }, []);
+videoRef.current!.srcObject=stream;
 
-  useEffect(() => {
-    if (!ready) return;
 
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
+await videoRef.current!.play();
 
-    const draw = () => {
-      rafRef.current =
-        requestAnimationFrame(draw);
 
-      const video = videoRef.current!;
+setReady(true);
 
-      if (video.readyState < 2) return;
 
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
+})();
 
-      const cw = canvas.width;
-      const ch = canvas.height;
 
-      const scale = Math.min(
-        cw / vw,
-        ch / vh
-      );
+},[]);
 
-      const dw = vw * scale;
-      const dh = vh * scale;
 
-      const dx = (cw - dw) / 2;
-      const dy = (ch - dh) / 2;
 
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, cw, ch);
+useEffect(()=>{
 
-      ctx.save();
-      ctx.translate(dx + dw, dy);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, dw, dh);
-      ctx.restore();
+if(!ready)return;
 
-      const kps = keypointsRef.current;
 
-      const toCanvas = (kp: Keypoint) => ({
-        x: dx + dw - kp.x * scale,
-        y: dy + kp.y * scale,
-      });
+let live=true;
 
-      for (const [a, b] of SKELETON_CONNECTIONS) {
-        const ka = kps[a];
-        const kb = kps[b];
 
-        if (
-          !ka ||
-          !kb ||
-          ka.score < 0.3 ||
-          kb.score < 0.3
-        )
-          continue;
+async function loop(){
 
-        const pa = toCanvas(ka);
-        const pb = toCanvas(kb);
+while(live){
 
-        ctx.strokeStyle = "#00ffcc";
-        ctx.lineWidth = 6;
-        ctx.lineCap = "round";
+const poses=
+await detector.current
+.estimatePoses(
+videoRef.current
+);
 
-        ctx.beginPath();
-        ctx.moveTo(pa.x, pa.y);
-        ctx.lineTo(pb.x, pb.y);
-        ctx.stroke();
-      }
 
-      for (const kp of kps) {
-        if (kp.score < 0.3) continue;
+if(poses.length)
+points.current=
+poses[0].keypoints;
 
-        const p = toCanvas(kp);
 
-        ctx.fillStyle = "#fff";
+await new Promise(r=>
+setTimeout(r,80));
 
-        ctx.beginPath();
-        ctx.arc(
-          p.x,
-          p.y,
-          8,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-      }
-    };
+}
 
-    draw();
+}
 
-    return () =>
-      cancelAnimationFrame(
-        rafRef.current
-      );
-  }, [ready]);
 
-  const exportedJson = JSON.stringify(
-    savedPoses,
-    null,
-    2
-  );
+loop();
 
-  return (
-    <div
-      style={{
-        width: "100vw",
-        height: "100vh",
-        position: "relative",
-        background: "#000",
-      }}
-    >
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        style={{ display: "none" }}
-      />
 
-      <canvas
-        ref={canvasRef}
-        style={{
-          width: "100%",
-          height: "100%",
-        }}
-      />
+return()=>{live=false};
 
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          width: 420,
-          background: "#111",
-          padding: 16,
-          borderRadius: 12,
-          color: "#fff",
-          fontFamily: "monospace",
-        }}
-      >
-        <h3>Pose Capture</h3>
 
-        <input
-          value={poseName}
-          onChange={(e) =>
-            setPoseName(e.target.value)
-          }
-          placeholder="Pose name"
-          style={{
-            width: "100%",
-            marginBottom: 8,
-          }}
-        />
+},[ready]);
 
-       <button
-  onClick={startSaveCountdown}
-  disabled={saving}
-  style={{
-    width: "100%",
-    padding: 12,
-    cursor: saving
-      ? "default"
-      : "pointer",
-    opacity: saving ? 0.6 : 1,
-  }}
+
+
+useEffect(()=>{
+
+if(!ready)return;
+
+
+const canvas=canvasRef.current!;
+const ctx=canvas.getContext("2d")!;
+
+
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+
+
+function draw(){
+
+requestAnimationFrame(draw);
+
+
+ctx.fillStyle="#000";
+ctx.fillRect(
+0,0,
+canvas.width,
+canvas.height
+);
+
+
+const k=points.current;
+
+
+if(k.length){
+
+const pose=normalize(k);
+
+const s=
+compare(
+pose,
+TARGETS[level].pose
+);
+
+
+setScore(Math.round(s));
+
+
+if(s>85){
+
+setHold(h=>{
+
+if(h>100){
+
+setLevel(
+(l)=>
+(l+1)%TARGETS.length
+);
+
+return 0;
+
+}
+
+return h+1;
+
+});
+
+}
+else{
+
+setHold(0);
+
+}
+
+
+
+for(const [a,b] of CONNECTIONS){
+
+const A=k[a];
+const B=k[b];
+
+if(!A||!B)continue;
+
+
+ctx.strokeStyle="#00ffcc";
+ctx.lineWidth=6;
+
+
+ctx.beginPath();
+
+ctx.moveTo(
+A.x,
+A.y
+);
+
+ctx.lineTo(
+B.x,
+B.y
+);
+
+ctx.stroke();
+
+
+}
+
+}
+
+
+
+
+// ghost
+
+const ghost=TARGETS[level].pose;
+
+ctx.strokeStyle="#ff0066";
+ctx.globalAlpha=.35;
+ctx.lineWidth=8;
+
+
+ghost.forEach((p,i)=>{
+
+if(i===0)return;
+
+
+const prev=ghost[i-1];
+
+
+ctx.beginPath();
+
+ctx.moveTo(
+innerWidth/2+
+prev.x*80,
+innerHeight/2+
+prev.y*80
+);
+
+ctx.lineTo(
+innerWidth/2+
+p.x*80,
+innerHeight/2+
+p.y*80
+);
+
+ctx.stroke();
+
+
+});
+
+
+ctx.globalAlpha=1;
+
+
+}
+
+
+draw();
+
+
+},[ready,level]);
+
+
+
+return (
+
+<div
+style={{
+width:"100vw",
+height:"100vh",
+background:"#000",
+overflow:"hidden"
+}}>
+
+
+<video
+ref={videoRef}
+style={{display:"none"}}
+/>
+
+
+<canvas
+ref={canvasRef}
+style={{
+width:"100%",
+height:"100%"
+}}
+/>
+
+
+
+<div
+style={{
+position:"absolute",
+top:30,
+left:30,
+color:"white",
+fontSize:30,
+fontFamily:"monospace"
+}}
 >
-  {saving
-    ? "Get Ready..."
-    : "Save Pose"}
-</button>
 
-        <p>
-          Saved: {savedPoses.length}
-        </p>
+<div>
+Pose:
+{TARGETS[level].name}
+</div>
 
-        <textarea
-          readOnly
-          value={exportedJson}
-          style={{
-            width: "100%",
-            height: 260,
-            background: "#000",
-            color: "#0f0",
-          }}
-        />
-      </div>
 
-      {status && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            background: "#000",
-            color: "#fff",
-          }}
-        >
-          {status}
-        </div>
-      )}
-      {countdown !== null && (
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      pointerEvents: "none",
-      background:
-        countdown === 0
-          ? "rgba(0,255,120,.15)"
-          : "rgba(0,0,0,.25)",
-    }}
-  >
-    <div
-      style={{
-        fontSize:
-          countdown === 0
-            ? 80
-            : 160,
-        fontWeight: 900,
-        color:
-          countdown === 0
-            ? "#00ff88"
-            : "#fff",
-        textShadow:
-          "0 0 40px rgba(255,255,255,.9)",
-      }}
-    >
-      {countdown === 0
-        ? "✓ SAVED"
-        : countdown}
-    </div>
-  </div>
-)}
-    </div>
-  );
+<div>
+Match:
+{score}%
+</div>
+
+
+</div>
+
+
+
+</div>
+
+);
+
+
 }
