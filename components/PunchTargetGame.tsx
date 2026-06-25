@@ -119,10 +119,11 @@ export default function PunchTargetGame({
       const data = e.detail;
       if (data.type === "TARGET") {
         const t = data.target;
+        const area = areaRef.current;
         targetsRef.current.push({
           id: t.id,
-          x: t.x * (areaRef.current?.clientWidth || 800),
-          y: t.y * (areaRef.current?.clientHeight || 600),
+          x: t.x * (area?.clientWidth || 800),
+          y: t.y * (area?.clientHeight || 600),
           r: 40,
           born: Date.now(),
           hit: false,
@@ -139,12 +140,7 @@ export default function PunchTargetGame({
     send({
       type: "TARGET",
       roomId,
-      target: {
-        id: idRef.current++,
-        x: Math.random(),
-        y: Math.random(),
-        r: 40,
-      },
+      target: { id: idRef.current++, x: Math.random(), y: Math.random(), r: 40 },
     });
   }, [send, roomId]);
 
@@ -187,7 +183,6 @@ export default function PunchTargetGame({
 
     setFinalScore(scoreRef.current);
     setFinalCombo(maxComboRef.current);
-    onScore?.(scoreRef.current); // if you have onScore prop
   }, []);
 
   // Main loop
@@ -233,7 +228,6 @@ export default function PunchTargetGame({
           if (lifeRat > 0.7) ctx.globalAlpha = 1 - ((lifeRat - 0.7) / 0.3) * 0.6;
         }
 
-        // Ring + Fill + Icon (same beautiful style as original)
         ctx.beginPath();
         ctx.arc(t.x, t.y, t.r + 6, 0, Math.PI * 2);
         ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
@@ -260,7 +254,7 @@ export default function PunchTargetGame({
     };
     rafRef.current = requestAnimationFrame(loop);
 
-    // Detection
+    // Detection loop
     let detecting = false;
     const detectLoop = async () => {
       if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
@@ -400,11 +394,11 @@ export default function PunchTargetGame({
         {(gameState === "idle" || gameState === "loading") && (
           <div style={css.overlay}>
             <div style={css.card}>
-              <h1 style={css.bigTitle}>Punch Targets</h1>
-              <p style={css.hint}>Punch the targets with your hands!<br />Multiplayer Battle</p>
+              <h1 style={css.bigTitle}>🥊 Punch Targets</h1>
+              <p style={css.hint}>Punch targets with your hands!<br />Multiplayer Battle Mode</p>
               {errorMsg && <p style={css.error}>{errorMsg}</p>}
-              <button onClick={() => {}} style={css.btn} disabled={gameState === "loading"}>
-                {gameState === "loading" ? "Loading AI..." : "Waiting for Host"}
+              <button style={css.btn} disabled>
+                {gameState === "loading" ? "Loading AI..." : "Waiting for Host to Start"}
               </button>
             </div>
           </div>
@@ -424,12 +418,12 @@ export default function PunchTargetGame({
               <h1 style={css.bigTitle}>Game Over!</h1>
               <div style={css.statsGrid}>
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ color: "#aaa" }}>Score</div>
-                  <div style={{ fontSize: "3.5rem", fontWeight: 900, color: "#00d4ff" }}>{finalScore}</div>
+                  <div style={{ color: "#aaa" }}>Final Score</div>
+                  <div style={{ fontSize: "3.8rem", fontWeight: 900, color: "#00d4ff" }}>{finalScore}</div>
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ color: "#aaa" }}>Max Combo</div>
-                  <div style={{ fontSize: "3.5rem", fontWeight: 900, color: "#ffaa00" }}>{finalCombo}</div>
+                  <div style={{ fontSize: "3.8rem", fontWeight: 900, color: "#ffaa00" }}>{finalCombo}</div>
                 </div>
               </div>
               <button onClick={() => setGameState("idle")} style={css.btn}>Play Again</button>
@@ -444,7 +438,7 @@ export default function PunchTargetGame({
           <h3>Players</h3>
           {leaderboard.map(p => (
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", margin: "6px 0" }}>
-              <span>{p.name ?? p.id.slice(0,8)}</span>
+              <span>{p.name ?? p.id.slice(0, 8)}</span>
               <span>{p.score ?? 0}</span>
             </div>
           ))}
@@ -454,7 +448,7 @@ export default function PunchTargetGame({
   );
 }
 
-// ── Styles (same beautiful style as your original) ─────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 const css: Record<string, React.CSSProperties> = {
   root: { width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "#fff", fontFamily: "system-ui, sans-serif" },
   hud: { position: "absolute", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", display: "flex", justifyContent: "center", gap: 40, zIndex: 50, fontSize: "1.4rem", fontWeight: 700 },
