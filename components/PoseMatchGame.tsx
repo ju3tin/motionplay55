@@ -20,10 +20,9 @@ interface Props {
 
   userId:string;
 
-  players:Player[];
+  players:number;
 
-  onScore:
-  (score:number)=>void;
+  send:(data:any)=>void;
 
 }
 
@@ -32,7 +31,9 @@ interface Props {
 interface Keypoint {
 
   x:number;
+
   y:number;
+
   score:number;
 
 }
@@ -42,6 +43,7 @@ interface Keypoint {
 interface Point {
 
   x:number;
+
   y:number;
 
 }
@@ -50,7 +52,13 @@ interface Point {
 
 const BONES:[number,number][] = [
 
+[0,1],
+[0,2],
+[1,3],
+[2,4],
+
 [5,6],
+
 [5,7],
 [7,9],
 
@@ -72,13 +80,16 @@ const BONES:[number,number][] = [
 
 
 
-const TARGET = [
+
+// T pose target
+
+const TARGET:Point[] = [
 
 {x:0,y:-2},
 {x:0,y:-2},
 
-{x:-.5,y:-1.7},
-{x:.5,y:-1.7},
+{x:-0.5,y:-1.8},
+{x:0.5,y:-1.8},
 
 {x:-1.8,y:-1},
 {x:1.8,y:-1},
@@ -86,21 +97,22 @@ const TARGET = [
 {x:-1,y:0},
 {x:1,y:0},
 
-{x:-1.1,y:1},
-{x:1.1,y:1},
+{x:-1.2,y:1},
+{x:1.2,y:1},
 
-{x:-.7,y:1.5},
-{x:.7,y:1.5},
+{x:-0.7,y:1.5},
+{x:0.7,y:1.5},
 
-{x:-.7,y:2.5},
-{x:.7,y:2.5},
+{x:-0.7,y:2.5},
+{x:0.7,y:2.5},
 
-{x:-.7,y:3.5},
-{x:.7,y:3.5},
+{x:-0.7,y:3.5},
+{x:0.7,y:3.5},
 
-{x:.7,y:3.5}
+{x:0,y:3.5}
 
 ];
+
 
 
 
@@ -108,9 +120,12 @@ const TARGET = [
 export default function PoseMatchGame({
 
 roomId,
+
 userId,
+
 players,
-onScore
+
+send
 
 }:Props){
 
@@ -118,6 +133,7 @@ onScore
 
 const videoRef =
 useRef<HTMLVideoElement>(null);
+
 
 
 const canvasRef =
@@ -129,22 +145,19 @@ const detector =
 useRef<any>(null);
 
 
-const keypoints =
+
+const points =
 useRef<Keypoint[]>([]);
 
 
 
-const [score,setScore]
-=
-useState(0);
-
-
-
-const [loaded,setLoaded]
-=
+const [ready,setReady] =
 useState(false);
 
 
+
+const [score,setScore] =
+useState(0);
 
 
 
@@ -154,15 +167,16 @@ k:Keypoint[]
 ):Point[]{
 
 
-const cx =
+const hipX =
 (k[11].x+k[12].x)/2;
 
 
-const cy =
+const hipY =
 (k[11].y+k[12].y)/2;
 
 
-const size =
+
+const scale =
 Math.hypot(
 k[5].x-k[6].x,
 k[5].y-k[6].y
@@ -172,9 +186,12 @@ k[5].y-k[6].y
 
 return k.map(p=>({
 
-x:(p.x-cx)/size,
+x:
+(p.x-hipX)/scale,
 
-y:(p.y-cy)/size
+
+y:
+(p.y-hipY)/scale
 
 }));
 
@@ -184,12 +201,16 @@ y:(p.y-cy)/size
 
 
 function compare(
+
 a:Point[],
+
 b:Point[]
+
 ){
 
 
 let total=0;
+
 
 
 for(
@@ -197,6 +218,7 @@ let i=0;
 i<a.length;
 i++
 ){
+
 
 total += Math.hypot(
 
@@ -206,7 +228,9 @@ a[i].y-b[i].y
 
 );
 
+
 }
+
 
 
 return Math.max(
@@ -224,23 +248,26 @@ return Math.max(
 
 
 
-//
-// Load MoveNet
-//
+
+
+// Load camera + MoveNet
 
 useEffect(()=>{
 
 
-async function start(){
+async function init(){
+
 
 
 const tf =
 await import("@tensorflow/tfjs");
 
 
+
 await import(
 "@tensorflow/tfjs-backend-webgl"
 );
+
 
 
 await tf.setBackend(
@@ -267,6 +294,7 @@ pd.SupportedModels.MoveNet,
 {
 
 modelType:
+
 pd.movenet
 .modelType
 .SINGLEPOSE_LIGHTNING
@@ -274,6 +302,8 @@ pd.movenet
 }
 
 );
+
+
 
 
 
@@ -296,6 +326,8 @@ facingMode:"user"
 
 
 
+
+
 videoRef.current!.srcObject =
 stream;
 
@@ -304,7 +336,8 @@ stream;
 await videoRef.current!.play();
 
 
-setLoaded(true);
+
+setReady(true);
 
 
 
@@ -312,7 +345,7 @@ setLoaded(true);
 
 
 
-start();
+init();
 
 
 
@@ -325,30 +358,28 @@ start();
 
 
 
-
-//
-// Detection loop
-//
+// Detect poses
 
 useEffect(()=>{
 
 
-if(!loaded)
+if(!ready)
 return;
 
 
-let active=true;
+
+let running=true;
 
 
 
-async function detect(){
+async function loop(){
 
 
-while(active){
+
+while(running){
 
 
 const poses =
-
 await detector.current
 .estimatePoses(
 videoRef.current!
@@ -358,7 +389,7 @@ videoRef.current!
 
 if(poses.length){
 
-keypoints.current =
+points.current =
 poses[0].keypoints;
 
 }
@@ -370,28 +401,28 @@ setTimeout(r,80)
 );
 
 
-}
-
-
 
 }
 
 
-detect();
+
+}
+
+
+
+loop();
 
 
 
 return()=>{
 
-active=false;
+running=false;
 
-}
-
-
-},[loaded]);
+};
 
 
 
+},[ready]);
 
 
 
@@ -399,14 +430,15 @@ active=false;
 
 
 
-//
-// Drawing
-//
+
+
+
+// Render
 
 useEffect(()=>{
 
 
-if(!loaded)
+if(!ready)
 return;
 
 
@@ -420,12 +452,27 @@ canvas.getContext("2d")!;
 
 
 
+function resize(){
+
 canvas.width =
 window.innerWidth;
 
 
 canvas.height =
 window.innerHeight;
+
+}
+
+
+
+resize();
+
+
+
+window.addEventListener(
+"resize",
+resize
+);
 
 
 
@@ -434,11 +481,24 @@ window.innerHeight;
 function draw(){
 
 
+
 requestAnimationFrame(draw);
 
 
 
+const video =
+videoRef.current!;
+
+
+
+if(video.readyState<2)
+return;
+
+
+
+
 ctx.fillStyle="#000";
+
 
 ctx.fillRect(
 
@@ -453,14 +513,6 @@ canvas.height
 );
 
 
-
-const video =
-videoRef.current!;
-
-
-
-if(video.readyState<2)
-return;
 
 
 
@@ -483,6 +535,7 @@ const h =
 video.videoHeight*scale;
 
 
+
 const ox =
 (canvas.width-w)/2;
 
@@ -492,10 +545,13 @@ const oy =
 
 
 
+
+
 // mirror camera
 
 
 ctx.save();
+
 
 
 ctx.translate(
@@ -504,10 +560,12 @@ oy
 );
 
 
+
 ctx.scale(
 -1,
 1
 );
+
 
 
 ctx.drawImage(
@@ -525,6 +583,7 @@ h
 );
 
 
+
 ctx.restore();
 
 
@@ -534,7 +593,7 @@ ctx.restore();
 
 
 const k =
-keypoints.current;
+points.current;
 
 
 
@@ -542,50 +601,63 @@ if(k.length){
 
 
 
-const p =
+const pose =
 normalize(k);
 
 
 
-const s =
+const currentScore =
+Math.round(
 compare(
-p,
+pose,
 TARGET
+)
 );
 
 
 
-setScore(
-Math.round(s)
-);
+setScore(currentScore);
 
 
-onScore(
-Math.round(s)
-);
+
+
+
+send({
+
+event:"pose-score",
+
+roomId,
+
+userId,
+
+score:currentScore
+
+});
+
 
 
 
 
 
 function map(
-x:Keypoint
+p:Keypoint
 ){
+
 
 return {
 
 x:
-
-ox+w-x.x*scale,
+ox+w-p.x*scale,
 
 
 y:
-
-oy+x.y*scale
+oy+p.y*scale
 
 };
 
+
 }
+
 
 
 
@@ -641,15 +713,17 @@ ctx.stroke();
 
 
 
+// Ghost pose
 
-// target ghost
 
+ctx.globalAlpha=.35;
 
-ctx.globalAlpha=.3;
 
 ctx.strokeStyle="#ff0066";
 
+
 ctx.lineWidth=10;
+
 
 
 
@@ -660,7 +734,9 @@ i++
 ){
 
 
+
 ctx.beginPath();
+
 
 
 ctx.moveTo(
@@ -704,11 +780,26 @@ ctx.globalAlpha=1;
 }
 
 
+
 draw();
 
 
 
-},[loaded]);
+
+return()=>{
+
+window.removeEventListener(
+"resize",
+resize
+);
+
+};
+
+
+
+},[ready]);
+
+
 
 
 
@@ -719,11 +810,21 @@ draw();
 return (
 
 <div
+
 style={{
+
 position:"relative",
-width:"100%",
-height:"100%"
+
+width:"100vw",
+
+height:"100vh",
+
+overflow:"hidden",
+
+background:"#000"
+
 }}
+
 >
 
 
@@ -736,10 +837,13 @@ muted
 playsInline
 
 style={{
+
 display:"none"
+
 }}
 
 />
+
 
 
 
@@ -748,8 +852,11 @@ display:"none"
 ref={canvasRef}
 
 style={{
+
 width:"100%",
+
 height:"100%"
+
 }}
 
 />
@@ -763,20 +870,21 @@ style={{
 
 position:"absolute",
 
-top:20,
+top:30,
 
-left:20,
+left:30,
 
-color:"white",
+color:"#fff",
 
-fontSize:28
+fontSize:32,
+
+fontFamily:"monospace"
 
 }}
 
 >
 
-Score:
-{score}%
+MATCH {score}%
 
 
 </div>
@@ -784,9 +892,7 @@ Score:
 
 
 </div>
-
 
 );
-
 
 }
