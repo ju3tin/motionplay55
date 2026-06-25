@@ -89,6 +89,7 @@ export default function PunchTargetGame({
     if (!playersList.length) return;
     const sorted = [...playersList].sort((a, b) => a.id.localeCompare(b.id));
     isHostRef.current = sorted[0].id === userId;
+    console.log("Host is:", isHostRef.current ? userId : "other");
   }, [playersList, userId]);
 
   const loadModel = useCallback(async () => {
@@ -104,10 +105,10 @@ export default function PunchTargetGame({
         pd.SupportedModels.MoveNet,
         { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-      console.log("✅ Model Loaded");
+      console.log("✅ Model Loaded Successfully");
       return true;
     } catch (e: any) {
-      console.error(e);
+      console.error("❌ Model load failed", e);
       setErrorMsg("Failed to load model");
       setGameState("idle");
       return false;
@@ -126,7 +127,7 @@ export default function PunchTargetGame({
       console.log("✅ Camera started");
       return true;
     } catch (err) {
-      console.error(err);
+      console.error("❌ Camera failed", err);
       setErrorMsg("Camera access denied");
       return false;
     }
@@ -137,6 +138,7 @@ export default function PunchTargetGame({
     const listener = (e: any) => {
       const data = e.detail;
       if (data.type === "TARGET") {
+        console.log("📍 Received target from host", data.target);
         const t = data.target;
         const area = areaRef.current;
         targetsRef.current.push({
@@ -155,6 +157,7 @@ export default function PunchTargetGame({
 
   const spawnTarget = useCallback(() => {
     if (!isHostRef.current) return;
+    console.log("🌟 Host spawning target");
     send({
       type: "TARGET",
       roomId: effectiveRoomId,
@@ -202,9 +205,14 @@ export default function PunchTargetGame({
   const startLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const area = areaRef.current;
-    if (!canvas || !area) return;
+    if (!canvas || !area) {
+      console.log("❌ Canvas or area not ready");
+      return;
+    }
 
     const ctx = canvas.getContext("2d")!;
+    console.log("🎨 Render loop started");
+
     const loop = () => {
       const now = Date.now();
       const { width, height } = area.getBoundingClientRect();
@@ -212,11 +220,16 @@ export default function PunchTargetGame({
       canvas.height = height;
       ctx.clearRect(0, 0, width, height);
 
+      // Expire targets
       targetsRef.current = targetsRef.current.filter(t => {
         if (!t.hit && now - t.born > TARGET_LIFE) return false;
         if (t.hit && now - t.born > TARGET_LIFE - 200) return false;
         return true;
       });
+
+      if (targetsRef.current.length > 0) {
+        console.log(`Drawing ${targetsRef.current.length} targets`);
+      }
 
       targetsRef.current.forEach(t => {
         const age = now - t.born;
@@ -256,6 +269,7 @@ export default function PunchTargetGame({
     };
     rafRef.current = requestAnimationFrame(loop);
 
+    // Pose Detection
     let detecting = false;
     const detectLoop = async () => {
       if (!detectorRef.current || !videoRef.current || videoRef.current.readyState < 2) {
@@ -278,10 +292,14 @@ export default function PunchTargetGame({
           const pose = poses[0];
 
           const lw = pose.keypoints[9];
-          if (lw?.score > 0.35) checkHit(width - lw.x * scaleX, lw.y * scaleY);
+          if (lw?.score > 0.35) {
+            checkHit(width - lw.x * scaleX, lw.y * scaleY);
+          }
 
           const rw = pose.keypoints[10];
-          if (rw?.score > 0.35) checkHit(width - rw.x * scaleX, rw.y * scaleY);
+          if (rw?.score > 0.35) {
+            checkHit(width - rw.x * scaleX, rw.y * scaleY);
+          }
         }
       } catch (e) {
         console.error("Detection error:", e);
@@ -294,12 +312,15 @@ export default function PunchTargetGame({
 
   // Game Control
   useEffect(() => {
+    console.log("🎮 gameActive changed to:", gameActive);
+
     if (!gameActive) {
       setGameState("idle");
       return;
     }
 
     const init = async () => {
+      console.log("🚀 Starting full game init...");
       targetsRef.current = [];
       scoreRef.current = 0;
       comboRef.current = 0;
@@ -326,6 +347,7 @@ export default function PunchTargetGame({
         setCountdown(c);
         if (c <= 0) {
           clearInterval(cd);
+          console.log("✅ Countdown finished - Starting game play!");
           setGameState("playing");
         }
       }, 1000);
@@ -339,20 +361,21 @@ export default function PunchTargetGame({
     };
   }, [gameActive, loadModel, startCamera]);
 
-  // Start loops when playing
   useEffect(() => {
     if (gameState !== "playing") return;
 
+    console.log("🎯 Starting render + detection loops");
     startLoop();
 
     if (isHostRef.current) {
       spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
+      console.log("Host started spawning targets");
     }
 
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          endGame();   // ← now properly in scope
+          endGame();
           return 0;
         }
         return prev - 1;
@@ -365,18 +388,6 @@ export default function PunchTargetGame({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [gameState, startLoop, spawnTarget, endGame]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      if (spawnRef.current) clearInterval(spawnRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
-    };
-  }, []);
 
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
