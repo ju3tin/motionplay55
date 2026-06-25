@@ -77,6 +77,7 @@ export default function PunchTargetGame({
   const [isReady, setIsReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Better players handling
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -84,14 +85,21 @@ export default function PunchTargetGame({
         name: `Player ${i + 1}`,
       }));
 
-  // Host detection
+  // === IMPROVED HOST DETECTION ===
   useEffect(() => {
-    if (!playersList.length) return;
+    if (!playersList.length || !userId) return;
+
+    // Sort by ID to ensure consistent host (lowest ID = host)
     const sorted = [...playersList].sort((a, b) => a.id.localeCompare(b.id));
-    isHostRef.current = sorted[0].id === userId;
+    const newIsHost = sorted[0].id === userId;
+
+    if (isHostRef.current !== newIsHost) {
+      console.log(`🎮 Host status changed: ${newIsHost ? "YOU ARE HOST" : "You are guest"}`);
+      isHostRef.current = newIsHost;
+    }
   }, [playersList, userId]);
 
-  // Optimized Model Loading
+  // Load Model
   const loadModel = useCallback(async () => {
     if (detectorRef.current) return true;
 
@@ -103,16 +111,12 @@ export default function PunchTargetGame({
       await tf.ready();
 
       const pd = await import("@tensorflow-models/pose-detection");
-
       detectorRef.current = await pd.createDetector(
         pd.SupportedModels.MoveNet,
-        {
-          modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          enableSmoothing: true,
-        }
+        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING, enableSmoothing: true }
       );
 
-      console.log("✅ MoveNet Lightning + Smoothing Loaded");
+      console.log("✅ MoveNet Loaded");
       setLoaded(true);
       return true;
     } catch (err) {
@@ -172,7 +176,6 @@ export default function PunchTargetGame({
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
-
     targetsRef.current = targetsRef.current.map(t => {
       if (t.hit) return t;
       const area = areaRef.current;
@@ -215,12 +218,12 @@ export default function PunchTargetGame({
     setFinalCombo(maxComboRef.current);
   }, []);
 
-  // === OPTIMIZED DETECTION LOOP (RAF + Throttling) ===
+  // Optimized Detection + Skeleton Drawing
   const startDetection = useCallback(() => {
     if (detectionRafRef.current) cancelAnimationFrame(detectionRafRef.current);
 
     let lastDetection = 0;
-    const targetInterval = 45; // ~22 FPS detection — excellent balance
+    const targetInterval = 45;
 
     const detectLoop = async (timestamp: number) => {
       if (gameState !== "playing" || !detectorRef.current || !videoRef.current) {
@@ -250,10 +253,10 @@ export default function PunchTargetGame({
           const height = area.clientHeight;
           const videoW = videoRef.current.videoWidth || 640;
           const videoH = videoRef.current.videoHeight || 480;
-
           const scaleX = width / videoW;
           const scaleY = height / videoH;
 
+          // Hit detection (wrists)
           [9, 10].forEach(i => {
             const kp = pose.keypoints[i];
             if (kp?.score > 0.35) {
@@ -273,7 +276,114 @@ export default function PunchTargetGame({
     detectionRafRef.current = requestAnimationFrame(detectLoop);
   }, [checkHit, gameState]);
 
-  // Main initialization
+  // Draw Skeleton
+  const drawSkeleton = useCallback((ctx: CanvasRenderingContext2D, pose: any, width: number, height: number, scaleX: number, scaleY: number) => {
+    if (!pose?.keypoints) return;
+
+    const keypoints = pose.keypoints;
+    const connections = [
+      [5,7],[7,9], [6,8],[8,10], [5,6], [5,11],[6,12],
+      [11,13],[13,15], [12,14],[14,16], [11,12]
+    ];
+
+    ctx.strokeStyle = "#00ffcc";
+    ctx.lineWidth = 4;
+
+    connections.forEach(([a, b]) => {
+      const kpA = keypoints[a];
+      const kpB = keypoints[b];
+      if (kpA?.score > 0.3 && kpB?.score > 0.3) {
+        ctx.beginPath();
+        ctx.moveTo(width - kpA.x * scaleX, kpA.y * scaleY);
+        ctx.lineTo(width - kpB.x * scaleX, kpB.y * scaleY);
+        ctx.stroke();
+      }
+    });
+
+    // Keypoints
+    keypoints.forEach((kp: any, i: number) => {
+      if (kp.score > 0.35) {
+        const x = width - kp.x * scaleX;
+        const y = kp.y * scaleY;
+        ctx.fillStyle = (i === 9 || i === 10) ? "#ffff00" : "#00ffff";
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }, []);
+
+  // Render loop (targets + skeleton)
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
+    const canvas = canvasRef.current;
+    const area = areaRef.current;
+    if (!canvas || !area) return;
+
+    const ctx = canvas.getContext("2d", { alpha: true })!;
+
+    const render = () => {
+      const width = area.clientWidth;
+      const height = area.clientHeight;
+      canvas.width = width;
+      canvas.height = height;
+      ctx.clearRect(0, 0, width, height);
+
+      const now = Date.now();
+
+      // Filter expired targets
+      targetsRef.current = targetsRef.current.filter(t => now - t.born <= TARGET_LIFE);
+
+      // Draw targets
+      targetsRef.current.forEach(t => {
+        const x = t.x * width;
+        const y = t.y * height;
+
+        ctx.save();
+        if (!t.hit) {
+          const pulse = 1 + Math.sin(now / 300) * 0.06;
+          ctx.translate(x, y);
+          ctx.scale(pulse, pulse);
+          ctx.translate(-x, -y);
+        }
+
+        // Ring
+        ctx.beginPath();
+        ctx.arc(x, y, t.r + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Fill
+        const grad = ctx.createRadialGradient(x - t.r * 0.3, y - t.r * 0.3, 0, x, y, t.r);
+        grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
+        grad.addColorStop(1, t.hit ? "#006633" : "#880022");
+        ctx.beginPath();
+        ctx.arc(x, y, t.r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Emoji
+        ctx.font = `${t.r * 1.1}px serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(t.hit ? "💥" : "🎯", x, y);
+
+        ctx.restore();
+      });
+
+      rafRef.current = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [gameState]);
+
+  // Main game init
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -291,10 +401,7 @@ export default function PunchTargetGame({
       setCombo(0);
       setTimeLeft(GAME_DURATION);
 
-      if (!detectorRef.current) {
-        await loadModel();
-      }
-
+      if (!detectorRef.current) await loadModel();
       await startCamera();
       setGameState("countdown");
 
@@ -320,13 +427,14 @@ export default function PunchTargetGame({
     };
   }, [gameActive, loadModel, startCamera]);
 
-  // Game systems when playing
+  // Start game systems
   useEffect(() => {
     if (gameState !== "playing") return;
 
     startDetection();
 
     if (isHostRef.current) {
+      console.log("🟢 Host spawning targets");
       spawnRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
     }
 
@@ -347,71 +455,6 @@ export default function PunchTargetGame({
     };
   }, [gameState, startDetection, spawnTarget, endGame]);
 
-  // Render loop
-  useEffect(() => {
-    if (gameState !== "playing") return;
-
-    const canvas = canvasRef.current;
-    const area = areaRef.current;
-    if (!canvas || !area) return;
-
-    const ctx = canvas.getContext("2d")!;
-
-    const render = () => {
-      const width = area.clientWidth;
-      const height = area.clientHeight;
-      canvas.width = width;
-      canvas.height = height;
-      ctx.clearRect(0, 0, width, height);
-
-      const now = Date.now();
-      targetsRef.current = targetsRef.current.filter(t => now - t.born <= TARGET_LIFE);
-
-      targetsRef.current.forEach(t => {
-        const x = t.x * width;
-        const y = t.y * height;
-
-        ctx.save();
-        if (!t.hit) {
-          const pulse = 1 + Math.sin(now / 300) * 0.06;
-          ctx.translate(x, y);
-          ctx.scale(pulse, pulse);
-          ctx.translate(-x, -y);
-        }
-
-        ctx.beginPath();
-        ctx.arc(x, y, t.r + 6, 0, Math.PI * 2);
-        ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        const grad = ctx.createRadialGradient(x - t.r * 0.3, y - t.r * 0.3, 0, x, y, t.r);
-        grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
-        grad.addColorStop(1, t.hit ? "#006633" : "#880022");
-
-        ctx.beginPath();
-        ctx.arc(x, y, t.r, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        ctx.font = `${t.r * 1.1}px serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(t.hit ? "💥" : "🎯", x, y);
-
-        ctx.restore();
-      });
-
-      rafRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [gameState]);
-
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   return (
@@ -421,6 +464,7 @@ export default function PunchTargetGame({
           <div>⏱ {`${Math.floor(timeLeft / 60).toString().padStart(2, "0")}:${(timeLeft % 60).toString().padStart(2, "0")}`}</div>
           <div>⚡ {combo}</div>
           <div>🏆 {score}</div>
+          {isHostRef.current && <div style={{ color: "#ffff00" }}>👑 HOST</div>}
         </div>
       )}
 
@@ -428,6 +472,7 @@ export default function PunchTargetGame({
         <video ref={videoRef} style={css.video} muted playsInline autoPlay />
         <canvas ref={canvasRef} style={css.canvas} />
 
+        {/* Overlays */}
         {(gameState === "idle" || gameState === "loading") && (
           <div style={css.overlay}>
             <div style={css.card}>
@@ -436,12 +481,9 @@ export default function PunchTargetGame({
                 <div><strong>Room:</strong> {effectiveRoomId}</div>
                 <div><strong>Status:</strong> {status}</div>
                 <div><strong>Players:</strong> {playersList.length}</div>
+                <div><strong>Your ID:</strong> {userId}</div>
               </div>
-              {onLeave && (
-                <button onClick={onLeave} style={{ ...css.btn, background: "#ff4444", marginBottom: 12 }}>
-                  Leave Game
-                </button>
-              )}
+              {onLeave && <button onClick={onLeave} style={{ ...css.btn, background: "#ff4444", marginBottom: 12 }}>Leave Game</button>}
               {onReady && !isReady && (
                 <button onClick={() => { setIsReady(true); onReady(); }} style={{ ...css.btn, background: "#00cc66" }}>
                   ✅ I'm Ready
@@ -479,7 +521,7 @@ export default function PunchTargetGame({
 
       {gameState === "playing" && (
         <div style={css.leaderboard}>
-          <h3>Players</h3>
+          <h3>Players {isHostRef.current && "(Host)"}</h3>
           {leaderboard.map(p => (
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", margin: "6px 0" }}>
               <span>{p.name ?? p.id.slice(0, 8)}</span>
