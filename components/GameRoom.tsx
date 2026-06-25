@@ -55,8 +55,10 @@ export default function GameRoom({
         )}
       </div>
 
-      {status === "playing" && (
- <PoseMatchGame
+     
+
+      {status === 'waiting' && (
+      <PoseMatchGame
 
 roomId={currentGameId!}
 
@@ -66,10 +68,11 @@ players={players}
 
 send={send}
 
-/>
-)}
+gameActive={
+status === "playing"
+}
 
-      {status === 'waiting' && (
+/>
         <button
           onClick={onReady}
           className="w-full bg-purple-600 hover:bg-purple-700 py-5 text-2xl font-bold rounded-2xl mb-8"
