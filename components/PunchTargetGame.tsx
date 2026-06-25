@@ -57,7 +57,7 @@ export default function PunchTargetGame({
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const rafRef = useRef<number | null>(null); // Added missing ref for animation frame
+  const rafRef = useRef<number | null>(null);
 
   const targetsRef = useRef<Target[]>([]);
   const scoreRef = useRef(0);
@@ -93,7 +93,7 @@ export default function PunchTargetGame({
 
   // Load TensorFlow model
   const loadModel = useCallback(async () => {
-    if (detectorRef.current) return;
+    if (detectorRef.current) return true;
 
     try {
       setGameState("loading");
@@ -142,7 +142,6 @@ export default function PunchTargetGame({
     const listener = (e: any) => {
       const data = e.detail;
       if (data.type === "TARGET") {
-        console.log("📍 Received target", data.target);
         const t = data.target;
         targetsRef.current.push({
           id: t.id,
@@ -231,10 +230,10 @@ export default function PunchTargetGame({
           const scaleX = width / videoW;
           const scaleY = height / videoH;
 
-          [9, 10].forEach(i => {  // wrists
+          [9, 10].forEach(i => {
             const kp = pose.keypoints[i];
             if (kp?.score > 0.35) {
-              const screenX = width - kp.x * scaleX; // mirrored
+              const screenX = width - kp.x * scaleX;
               const screenY = kp.y * scaleY;
               checkHit(screenX, screenY);
             }
@@ -351,14 +350,12 @@ export default function PunchTargetGame({
           ctx.translate(-x, -y);
         }
 
-        // Outer ring
         ctx.beginPath();
         ctx.arc(x, y, t.r + 6, 0, Math.PI * 2);
         ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
         ctx.lineWidth = 3;
         ctx.stroke();
 
-        // Main target
         const grad = ctx.createRadialGradient(x - t.r * 0.3, y - t.r * 0.3, 0, x, y, t.r);
         grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
         grad.addColorStop(1, t.hit ? "#006633" : "#880022");
@@ -368,7 +365,6 @@ export default function PunchTargetGame({
         ctx.fillStyle = grad;
         ctx.fill();
 
-        // Emoji
         ctx.font = `${t.r * 1.1}px serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -477,4 +473,7 @@ const css: Record<string, React.CSSProperties> = {
   card: { background: "rgba(20,20,40,0.95)", borderRadius: 20, padding: "40px", textAlign: "center", maxWidth: 460 },
   bigTitle: { fontSize: "2.8rem", fontWeight: 900, marginBottom: 16, background: "linear-gradient(135deg, #00d4ff, #0066ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
   btn: { background: "#0066ff", color: "#fff", border: "none", padding: "14px 32px", fontSize: "1.1rem", borderRadius: 12, cursor: "pointer", width: "100%", marginTop: 12, fontWeight: 700 },
-  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4
+  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4ff", textShadow: "0 0 60px #00d4ff" },
+  statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, margin: "30px 0" },
+  leaderboard: { position: "absolute", top: 80, right: 20, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 200, zIndex: 30 },
+};
