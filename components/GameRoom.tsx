@@ -56,28 +56,17 @@ export default function GameRoom({
       </div>
 
       {status === "playing" && (
-  <PoseMatchGame
+ <PoseMatchGame
 
-    roomId={currentGameId}
+roomId={currentGameId!}
 
-    userId={userId}
+userId={userId}
 
-    players={players}
+players={players}
 
-    onScore={(score)=>{
+send={send}
 
-      socket.emit(
-        "pose-score",
-        {
-          roomId: currentGameId,
-          userId,
-          score
-        }
-      );
-
-    }}
-
-  />
+/>
 )}
 
       {status === 'waiting' && (
