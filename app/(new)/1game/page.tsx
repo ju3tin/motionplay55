@@ -31,6 +31,8 @@ const SKELETON_CONNECTIONS: [number, number][] = [
 export default function PoseCapturePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const modelRef = useRef<any>(null);
   const keypointsRef = useRef<Keypoint[]>([]);
@@ -65,22 +67,55 @@ export default function PoseCapturePage() {
     }));
   }
 
-  function saveCurrentPose() {
-    const pose = normalizePose(keypointsRef.current);
+ function startSaveCountdown() {
+  if (saving) return;
+
+  setSaving(true);
+  setCountdown(3);
+
+  let count = 3;
+
+  const interval = setInterval(() => {
+    count--;
+
+    if (count > 0) {
+      setCountdown(count);
+      return;
+    }
+
+    clearInterval(interval);
+
+    const pose =
+      normalizePose(keypointsRef.current);
 
     if (!pose) {
-      alert("No pose detected.");
+      setCountdown(null);
+      setSaving(false);
+      alert("No pose detected");
       return;
     }
 
     const entry: SavedPose = {
-      name: poseName || `Pose ${savedPoses.length + 1}`,
+      name:
+        poseName ||
+        `Pose ${savedPoses.length + 1}`,
       pose,
     };
 
-    setSavedPoses((p) => [...p, entry]);
-    setPoseName("");
-  }
+    setSavedPoses((p) => [
+      ...p,
+      entry,
+    ]);
+
+    setCountdown(0);
+
+    setTimeout(() => {
+      setCountdown(null);
+      setSaving(false);
+      setPoseName("");
+    }, 1000);
+  }, 1000);
+}
 
   useEffect(() => {
     let cancelled = false;
@@ -350,16 +385,22 @@ export default function PoseCapturePage() {
           }}
         />
 
-        <button
-          onClick={saveCurrentPose}
-          style={{
-            width: "100%",
-            padding: 12,
-            cursor: "pointer",
-          }}
-        >
-          Save Pose
-        </button>
+       <button
+  onClick={startSaveCountdown}
+  disabled={saving}
+  style={{
+    width: "100%",
+    padding: 12,
+    cursor: saving
+      ? "default"
+      : "pointer",
+    opacity: saving ? 0.6 : 1,
+  }}
+>
+  {saving
+    ? "Get Ready..."
+    : "Save Pose"}
+</button>
 
         <p>
           Saved: {savedPoses.length}
@@ -391,6 +432,42 @@ export default function PoseCapturePage() {
           {status}
         </div>
       )}
+      {countdown !== null && (
+  <div
+    style={{
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "none",
+      background:
+        countdown === 0
+          ? "rgba(0,255,120,.15)"
+          : "rgba(0,0,0,.25)",
+    }}
+  >
+    <div
+      style={{
+        fontSize:
+          countdown === 0
+            ? 80
+            : 160,
+        fontWeight: 900,
+        color:
+          countdown === 0
+            ? "#00ff88"
+            : "#fff",
+        textShadow:
+          "0 0 40px rgba(255,255,255,.9)",
+      }}
+    >
+      {countdown === 0
+        ? "✓ SAVED"
+        : countdown}
+    </div>
+  </div>
+)}
     </div>
   );
 }
