@@ -2,383 +2,593 @@
 
 import { useEffect, useRef, useState } from "react";
 
-interface Point {
-  x:number;
-  y:number;
-}
-
 interface Keypoint {
-  x:number;
-  y:number;
-  score:number;
+  x: number;
+  y: number;
+  score: number;
 }
 
-const CONNECTIONS:[number,number][] = [
- [5,6],[5,7],[7,9],[6,8],[8,10],
- [5,11],[6,12],[11,12],
- [11,13],[13,15],
- [12,14],[14,16],
- [0,1],[1,3],
- [0,2],[2,4]
+interface Point {
+  x: number;
+  y: number;
+}
+
+const CONNECTIONS: [number, number][] = [
+  [5, 6],
+  [5, 7],
+  [7, 9],
+  [6, 8],
+  [8, 10],
+  [5, 11],
+  [6, 12],
+  [11, 12],
+  [11, 13],
+  [13, 15],
+  [12, 14],
+  [14, 16],
+  [0, 1],
+  [1, 3],
+  [0, 2],
+  [2, 4],
 ];
 
 
-// target poses
+// Normalized target poses
 const TARGETS = [
-{
- name:"T Pose",
- pose:[
- {x:0,y:-2},
- {x:0,y:-2},
- {x:-.5,y:-1.8},
- {x:.5,y:-1.8},
- {x:-1.8,y:-1},
- {x:1.8,y:-1},
- {x:-1,y:0},
- {x:1,y:0},
- {x:-1.2,y:1.2},
- {x:1.2,y:1.2},
- {x:-.7,y:1.5},
- {x:.7,y:1.5},
- {x:-.8,y:2.5},
- {x:.8,y:2.5},
- {x:-.8,y:3.5},
- {x:.8,y:3.5},
- {x:-.8,y:3.5},
- ]
-}
+  {
+    name: "T Pose",
+    pose: [
+      { x: 0, y: -2 },
+      { x: 0, y: -2 },
+
+      { x: -0.5, y: -1.8 },
+      { x: 0.5, y: -1.8 },
+
+      { x: -1.8, y: -1 },
+      { x: 1.8, y: -1 },
+
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
+
+      { x: -1.2, y: 1.2 },
+      { x: 1.2, y: 1.2 },
+
+      { x: -0.7, y: 1.5 },
+      { x: 0.7, y: 1.5 },
+
+      { x: -0.8, y: 2.5 },
+      { x: 0.8, y: 2.5 },
+
+      { x: -0.8, y: 3.5 },
+      { x: 0.8, y: 3.5 },
+
+      { x: -0.8, y: 3.5 },
+    ],
+  },
 ];
 
 
-export default function Page(){
+export default function Game() {
 
-const videoRef=useRef<HTMLVideoElement>(null);
-const canvasRef=useRef<HTMLCanvasElement>(null);
+  const videoRef =
+    useRef<HTMLVideoElement>(null);
 
-const detector=useRef<any>();
-const points=useRef<Keypoint[]>([]);
+  const canvasRef =
+    useRef<HTMLCanvasElement>(null);
 
-const [ready,setReady]=useState(false);
-const [score,setScore]=useState(0);
-const [level,setLevel]=useState(0);
-const [hold,setHold]=useState(0);
 
+  const detector =
+    useRef<any>(null);
 
 
-function normalize(k:Keypoint[]){
+  const points =
+    useRef<Keypoint[]>([]);
 
-const hipX=(k[11].x+k[12].x)/2;
-const hipY=(k[11].y+k[12].y)/2;
 
-const size=Math.hypot(
- k[5].x-k[6].x,
- k[5].y-k[6].y
-)||1;
 
+  const [ready,setReady] =
+    useState(false);
 
-return k.map(p=>({
-x:(p.x-hipX)/size,
-y:(p.y-hipY)/size
-}));
 
-}
+  const [score,setScore] =
+    useState(0);
 
 
+  const [level,setLevel] =
+    useState(0);
 
-function compare(
-a:Point[],
-b:Point[]
-){
 
-let total=0;
+  const [hold,setHold] =
+    useState(0);
 
-for(let i=0;i<a.length;i++){
 
-const d=Math.hypot(
-a[i].x-b[i].x,
-a[i].y-b[i].y
-);
 
-total+=d;
+  function normalizePose(
+    k: Keypoint[]
+  ): Point[] {
 
-}
 
-const avg=total/a.length;
+    const hipX =
+      (k[11].x + k[12].x) / 2;
 
+    const hipY =
+      (k[11].y + k[12].y) / 2;
 
-return Math.max(
-0,
-100-avg*35
-);
 
-}
+    const scale =
+      Math.hypot(
+        k[5].x - k[6].x,
+        k[5].y - k[6].y
+      ) || 1;
 
 
 
-useEffect(()=>{
+    return k.map(p=>({
 
-(async()=>{
+      x:
+      (p.x - hipX) / scale,
 
-const tf=await import("@tensorflow/tfjs");
-await import("@tensorflow/tfjs-backend-webgl");
+      y:
+      (p.y - hipY) / scale
 
-await tf.setBackend("webgl");
-await tf.ready();
+    }));
 
+  }
 
-const pd=
-await import("@tensorflow-models/pose-detection");
 
 
-detector.current=
-await pd.createDetector(
-pd.SupportedModels.MoveNet,
-{
-modelType:
-pd.movenet.modelType
-.SINGLEPOSE_LIGHTNING
-}
-);
 
+  function comparePose(
+    a:Point[],
+    b:Point[]
+  ){
 
+    let total = 0;
 
-const stream=
-await navigator.mediaDevices
-.getUserMedia({
-video:true
-});
 
+    for(
+      let i=0;
+      i<a.length;
+      i++
+    ){
 
-videoRef.current!.srcObject=stream;
+      total += Math.hypot(
+        a[i].x - b[i].x,
+        a[i].y - b[i].y
+      );
 
+    }
 
-await videoRef.current!.play();
 
+    const avg =
+      total / a.length;
 
-setReady(true);
 
+    return Math.max(
+      0,
+      100 - avg * 40
+    );
 
-})();
+  }
 
 
-},[]);
 
 
 
-useEffect(()=>{
+  useEffect(()=>{
 
-if(!ready)return;
 
+    async function start(){
 
-let live=true;
 
+      const tf =
+      await import("@tensorflow/tfjs");
 
-async function loop(){
 
-while(live){
+      await import(
+        "@tensorflow/tfjs-backend-webgl"
+      );
 
-const poses=
-await detector.current
-.estimatePoses(
-videoRef.current
-);
 
+      await tf.setBackend(
+        "webgl"
+      );
 
-if(poses.length)
-points.current=
-poses[0].keypoints;
 
+      await tf.ready();
 
-await new Promise(r=>
-setTimeout(r,80));
 
-}
 
-}
+      const pd =
+      await import(
+        "@tensorflow-models/pose-detection"
+      );
 
 
-loop();
 
+      detector.current =
+      await pd.createDetector(
+        pd.SupportedModels.MoveNet,
+        {
+          modelType:
+          pd.movenet
+          .modelType
+          .SINGLEPOSE_LIGHTNING
+        }
+      );
 
-return()=>{live=false};
 
 
-},[ready]);
+      const stream =
+      await navigator.mediaDevices
+      .getUserMedia({
+        video:{
+          width:1280,
+          height:720
+        }
+      });
 
 
 
-useEffect(()=>{
+      const video =
+      videoRef.current!;
 
-if(!ready)return;
 
+      video.srcObject =
+      stream;
 
-const canvas=canvasRef.current!;
-const ctx=canvas.getContext("2d")!;
 
+      await video.play();
 
-canvas.width=innerWidth;
-canvas.height=innerHeight;
 
 
+      setReady(true);
 
-function draw(){
 
-requestAnimationFrame(draw);
+    }
 
 
-ctx.fillStyle="#000";
-ctx.fillRect(
-0,0,
-canvas.width,
-canvas.height
-);
 
+    start();
 
-const k=points.current;
 
+  },[]);
 
-if(k.length){
 
-const pose=normalize(k);
 
-const s=
-compare(
-pose,
-TARGETS[level].pose
-);
 
 
-setScore(Math.round(s));
+  useEffect(()=>{
 
 
-if(s>85){
+    if(!ready)
+      return;
 
-setHold(h=>{
 
-if(h>100){
 
-setLevel(
-(l)=>
-(l+1)%TARGETS.length
-);
+    let active=true;
 
-return 0;
 
-}
 
-return h+1;
+    async function detect(){
 
-});
 
-}
-else{
+      while(active){
 
-setHold(0);
 
-}
+        const poses =
+        await detector.current
+        .estimatePoses(
+          videoRef.current!
+        );
 
 
 
-for(const [a,b] of CONNECTIONS){
+        if(
+          poses &&
+          poses.length
+        ){
 
-const A=k[a];
-const B=k[b];
+          points.current =
+          poses[0].keypoints;
 
-if(!A||!B)continue;
+        }
 
 
-ctx.strokeStyle="#00ffcc";
-ctx.lineWidth=6;
 
+        await new Promise(r=>
+          setTimeout(r,80)
+        );
 
-ctx.beginPath();
 
-ctx.moveTo(
-A.x,
-A.y
-);
+      }
 
-ctx.lineTo(
-B.x,
-B.y
-);
 
-ctx.stroke();
+    }
 
 
-}
+    detect();
 
-}
 
 
+    return()=>{
+      active=false;
+    }
 
 
-// ghost
 
-const ghost=TARGETS[level].pose;
+  },[ready]);
 
-ctx.strokeStyle="#ff0066";
-ctx.globalAlpha=.35;
-ctx.lineWidth=8;
 
 
-ghost.forEach((p,i)=>{
 
-if(i===0)return;
 
 
-const prev=ghost[i-1];
 
+  useEffect(()=>{
 
-ctx.beginPath();
 
-ctx.moveTo(
-innerWidth/2+
-prev.x*80,
-innerHeight/2+
-prev.y*80
-);
+    if(!ready)
+      return;
 
-ctx.lineTo(
-innerWidth/2+
-p.x*80,
-innerHeight/2+
-p.y*80
-);
 
-ctx.stroke();
 
+    const canvas =
+    canvasRef.current!;
 
-});
 
+    const ctx =
+    canvas.getContext("2d")!;
 
-ctx.globalAlpha=1;
 
 
-}
+    canvas.width =
+    window.innerWidth;
 
 
-draw();
+    canvas.height =
+    window.innerHeight;
 
 
-},[ready,level]);
 
 
 
-return (
+    function draw(){
+
+
+      requestAnimationFrame(draw);
+
+
+
+      ctx.fillStyle="#000";
+
+
+      ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+
+
+      const k =
+      points.current;
+
+
+
+      if(k.length){
+
+
+        const player =
+        normalizePose(k);
+
+
+
+        const target =
+        TARGETS[level].pose;
+
+
+
+        const s =
+        comparePose(
+          player,
+          target
+        );
+
+
+
+        setScore(
+          Math.round(s)
+        );
+
+
+
+        if(s>85){
+
+
+          setHold(h=>{
+
+
+            if(h>=25){
+
+
+              setLevel(
+                x=>
+                (x+1)
+                %
+                TARGETS.length
+              );
+
+
+              return 0;
+
+
+            }
+
+
+            return h+1;
+
+
+          });
+
+
+        }
+        else{
+
+
+          setHold(0);
+
+
+        }
+
+
+
+
+
+
+        ctx.strokeStyle =
+        "#00ffcc";
+
+
+        ctx.lineWidth=6;
+
+
+
+        for(
+          const [a,b]
+          of CONNECTIONS
+        ){
+
+
+          const A=k[a];
+          const B=k[b];
+
+
+          if(!A||!B)
+            continue;
+
+
+
+          ctx.beginPath();
+
+
+          ctx.moveTo(
+            A.x,
+            A.y
+          );
+
+
+          ctx.lineTo(
+            B.x,
+            B.y
+          );
+
+
+          ctx.stroke();
+
+
+        }
+
+
+      }
+
+
+
+
+
+
+      // draw ghost
+
+
+      const ghost =
+      TARGETS[level].pose;
+
+
+
+      ctx.globalAlpha=.35;
+
+
+      ctx.strokeStyle="#ff0066";
+
+
+      ctx.lineWidth=10;
+
+
+
+      for(
+        let i=1;
+        i<ghost.length;
+        i++
+      ){
+
+
+        ctx.beginPath();
+
+
+        ctx.moveTo(
+          canvas.width/2+
+          ghost[i-1].x*80,
+
+          canvas.height/2+
+          ghost[i-1].y*80
+        );
+
+
+        ctx.lineTo(
+          canvas.width/2+
+          ghost[i].x*80,
+
+          canvas.height/2+
+          ghost[i].y*80
+        );
+
+
+        ctx.stroke();
+
+
+      }
+
+
+
+      ctx.globalAlpha=1;
+
+
+
+    }
+
+
+
+    draw();
+
+
+
+  },[
+    ready,
+    level
+  ]);
+
+
+
+
+
+  return (
 
 <div
 style={{
 width:"100vw",
 height:"100vh",
-background:"#000",
-overflow:"hidden"
-}}>
+overflow:"hidden",
+background:"#000"
+}}
+>
 
 
 <video
 ref={videoRef}
-style={{display:"none"}}
+style={{
+display:"none"
+}}
 />
 
 
@@ -397,8 +607,8 @@ style={{
 position:"absolute",
 top:30,
 left:30,
-color:"white",
-fontSize:30,
+color:"#fff",
+fontSize:32,
 fontFamily:"monospace"
 }}
 >
@@ -408,20 +618,25 @@ Pose:
 {TARGETS[level].name}
 </div>
 
-
 <div>
 Match:
 {score}%
 </div>
 
 
+<div>
+Hold:
+{Math.round(
+hold/25*2
+)}s
 </div>
 
 
+</div>
+
 
 </div>
 
-);
-
+  );
 
 }
