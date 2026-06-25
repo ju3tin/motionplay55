@@ -108,6 +108,7 @@ export default function Home() {
             countdown={socket.countdown}
             messages={socket.messages}
             userId={userId}
+            send={socket.send}
             onReady={handleReady}
             onSendMessage={handleSendMessage}
             onLeave={handleLeave}
