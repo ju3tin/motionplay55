@@ -5,7 +5,7 @@ interface LeaderboardProps {
   myUserId: string;
 }
 
-export default function Leaderboard({ players, myUserId }: LeaderboardProps) {
+export default function Leaderboard5({ players, myUserId }: LeaderboardProps) {
   const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
 
   return (
