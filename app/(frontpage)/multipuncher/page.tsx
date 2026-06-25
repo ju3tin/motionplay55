@@ -73,7 +73,7 @@ export default function Home() {
               />
             </div>
 
-            <CreateRoom onRoomCreated={handleCreateGame} />
+            <CreateRoom1 onRoomCreated={handleCreateGame} />
 
             {/* Join Game Section */}
             <div className="bg-zinc-900 p-8 rounded-2xl">
