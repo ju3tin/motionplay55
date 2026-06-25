@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useGameSocket } from '@/lib/socket';
-import CreateRoom from '@/components/CreateRoom';
+import CreateRoom1 from '@/components/CreateRoom1';
 import GameRoom1 from '@/components/GameRoom1';
 import PunchTargetGame from '@/components/PunchTargetGame';
 
