@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 
 export interface Player {
@@ -54,11 +53,11 @@ export default function PunchTargetGame({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
-
   const detectorRef = useRef<any>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const rafRef = useRef<number | null>(null); // Added missing ref for animation frame
 
   const targetsRef = useRef<Target[]>([]);
   const scoreRef = useRef(0);
@@ -92,30 +91,32 @@ export default function PunchTargetGame({
     isHostRef.current = sorted[0].id === userId;
   }, [playersList, userId]);
 
-  // === YOUR WORKING TENSORFLOW LOADING ===
-  useEffect(() => {
-    async function load() {
-      try {
-        setGameState("loading");
-        const tf = await import("@tensorflow/tfjs");
-        await import("@tensorflow/tfjs-backend-webgl");
-        await tf.setBackend("webgl");
-        await tf.ready();
+  // Load TensorFlow model
+  const loadModel = useCallback(async () => {
+    if (detectorRef.current) return;
 
-        const pd = await import("@tensorflow-models/pose-detection");
-        detectorRef.current = await pd.createDetector(
-          pd.SupportedModels.MoveNet,
-          { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
-        );
-        console.log("✅ Model Loaded");
-        setLoaded(true);
-      } catch (err) {
-        console.error("Failed to load pose detector:", err);
-        setErrorMsg("Failed to load AI model");
-        setGameState("idle");
-      }
+    try {
+      setGameState("loading");
+      const tf = await import("@tensorflow/tfjs");
+      await import("@tensorflow/tfjs-backend-webgl");
+      await tf.setBackend("webgl");
+      await tf.ready();
+
+      const pd = await import("@tensorflow-models/pose-detection");
+      detectorRef.current = await pd.createDetector(
+        pd.SupportedModels.MoveNet,
+        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
+      );
+
+      console.log("✅ Model Loaded");
+      setLoaded(true);
+      return true;
+    } catch (err) {
+      console.error("Failed to load pose detector:", err);
+      setErrorMsg("Failed to load AI model");
+      setGameState("idle");
+      return false;
     }
-    load();
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -136,14 +137,13 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // Receive targets
+  // Receive targets from host
   useEffect(() => {
     const listener = (e: any) => {
       const data = e.detail;
       if (data.type === "TARGET") {
         console.log("📍 Received target", data.target);
         const t = data.target;
-        const area = areaRef.current;
         targetsRef.current.push({
           id: t.id,
           x: t.x,
@@ -188,6 +188,7 @@ export default function PunchTargetGame({
       comboRef.current++;
       if (comboRef.current > maxComboRef.current) maxComboRef.current = comboRef.current;
       scoreRef.current += 100 + comboRef.current * 15;
+
       setScore(scoreRef.current);
       setCombo(comboRef.current);
 
@@ -210,7 +211,6 @@ export default function PunchTargetGame({
     setFinalCombo(maxComboRef.current);
   }, []);
 
-  // Detection loop (your style)
   const startDetection = useCallback(() => {
     if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
 
@@ -228,14 +228,13 @@ export default function PunchTargetGame({
           const height = area.clientHeight;
           const videoW = videoRef.current.videoWidth || 640;
           const videoH = videoRef.current.videoHeight || 480;
-
           const scaleX = width / videoW;
           const scaleY = height / videoH;
 
-          [9, 10].forEach(i => {
+          [9, 10].forEach(i => {  // wrists
             const kp = pose.keypoints[i];
             if (kp?.score > 0.35) {
-              const screenX = width - kp.x * scaleX;
+              const screenX = width - kp.x * scaleX; // mirrored
               const screenY = kp.y * scaleY;
               checkHit(screenX, screenY);
             }
@@ -247,7 +246,7 @@ export default function PunchTargetGame({
     }, 80);
   }, [checkHit, gameState]);
 
-  // Game Control
+  // Main game initialization
   useEffect(() => {
     if (!gameActive) {
       setGameState("idle");
@@ -290,10 +289,11 @@ export default function PunchTargetGame({
       if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
       if (spawnRef.current) clearInterval(spawnRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [gameActive, loadModel, startCamera]);
 
-  // Start detection + render when playing
+  // Start detection + spawning when playing
   useEffect(() => {
     if (gameState !== "playing") return;
 
@@ -351,32 +351,40 @@ export default function PunchTargetGame({
           ctx.translate(-x, -y);
         }
 
+        // Outer ring
         ctx.beginPath();
         ctx.arc(x, y, t.r + 6, 0, Math.PI * 2);
         ctx.strokeStyle = t.hit ? "#00ff88" : "rgba(220,20,60,0.6)";
         ctx.lineWidth = 3;
         ctx.stroke();
 
+        // Main target
         const grad = ctx.createRadialGradient(x - t.r * 0.3, y - t.r * 0.3, 0, x, y, t.r);
         grad.addColorStop(0, t.hit ? "#00ff88" : "#ff4466");
         grad.addColorStop(1, t.hit ? "#006633" : "#880022");
+
         ctx.beginPath();
         ctx.arc(x, y, t.r, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
 
+        // Emoji
         ctx.font = `${t.r * 1.1}px serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(t.hit ? "💥" : "🎯", x, y);
+
         ctx.restore();
       });
 
       rafRef.current = requestAnimationFrame(render);
     };
+
     render();
 
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, [gameState]);
 
   const leaderboard = [...playersList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -404,13 +412,11 @@ export default function PunchTargetGame({
                 <div><strong>Status:</strong> {status}</div>
                 <div><strong>Players:</strong> {playersList.length}</div>
               </div>
-
               {onLeave && (
                 <button onClick={onLeave} style={{ ...css.btn, background: "#ff4444", marginBottom: 12 }}>
                   Leave Game
                 </button>
               )}
-
               {onReady && !isReady && (
                 <button onClick={() => { setIsReady(true); onReady(); }} style={{ ...css.btn, background: "#00cc66" }}>
                   ✅ I'm Ready
@@ -471,7 +477,4 @@ const css: Record<string, React.CSSProperties> = {
   card: { background: "rgba(20,20,40,0.95)", borderRadius: 20, padding: "40px", textAlign: "center", maxWidth: 460 },
   bigTitle: { fontSize: "2.8rem", fontWeight: 900, marginBottom: 16, background: "linear-gradient(135deg, #00d4ff, #0066ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
   btn: { background: "#0066ff", color: "#fff", border: "none", padding: "14px 32px", fontSize: "1.1rem", borderRadius: 12, cursor: "pointer", width: "100%", marginTop: 12, fontWeight: 700 },
-  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4ff", textShadow: "0 0 60px #00d4ff" },
-  statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, margin: "30px 0" },
-  leaderboard: { position: "absolute", top: 80, right: 20, background: "rgba(0,0,0,0.6)", padding: 16, borderRadius: 12, minWidth: 200, zIndex: 30 },
-};
+  countdownNum: { fontSize: "min(22vw, 18rem)", fontWeight: 900, color: "#00d4
