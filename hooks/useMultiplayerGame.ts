@@ -5,7 +5,7 @@ export function useMultiplayerGame(room: string) {
   const [players, setPlayers] = useState<any[]>([]);
   const [myUserId] = useState(`Player-${Math.floor(Math.random() * 10000)}`);
   const [isConnected, setIsConnected] = useState(false);
-
+  const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000';
   const send = useCallback((event: string, payload: any = {}) => {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
@@ -19,7 +19,8 @@ export function useMultiplayerGame(room: string) {
   }, [ws, room, myUserId]);
 
   useEffect(() => {
-    const socket = new WebSocket('wss://node-gameserver.onrender.com/');
+    let url = WS_URL
+    const socket = new WebSocket(url);
 
     socket.onopen = () => {
       setIsConnected(true);
