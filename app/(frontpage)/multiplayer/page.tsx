@@ -112,28 +112,7 @@ export default function Home() {
             onSendMessage={handleSendMessage}
             onLeave={handleLeave}
           />
-       <PoseMatchGame
-
-    roomId={currentGameId}
-
-    userId={userId}
-
-    players={players}
-
-    onScore={(score)=>{
-
-      socket.emit(
-        "pose-score",
-        {
-          roomId: currentGameId,
-          userId,
-          score
-        }
-      );
-
-    }}
-
-  />
+     
         )}
       </div>
     </main>
