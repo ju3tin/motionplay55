@@ -2,34 +2,52 @@
 import { useState } from 'react';
 
 export default function GameRoom({
-  room, players, maxPlayers, readyCount, status, countdown,
-  messages, onReady, onSendMessage, onLeave
+  currentGameId,
+  currentRoom,
+  players,
+  maxPlayers,
+  readyCount,
+  status,
+  countdown,
+  messages,
+  userId,
+  onReady,
+  onSendMessage,
+  onLeave
 }: any) {
-  const [msg, setMsg] = useState("");
+  const [message, setMessage] = useState("");
 
   const sendMessage = () => {
-    if (msg.trim()) {
-      onSendMessage({ event: "chat", room, message: msg.trim(), userId: "You" });
-      setMsg("");
+    if (message.trim()) {
+      onSendMessage({
+        event: "chat",
+        gameId: currentGameId,
+        message: message.trim(),
+        userId
+      });
+      setMessage("");
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-zinc-900 p-6 rounded-2xl mb-6">
-        <div className="flex justify-between">
-          <h1 className="text-3xl font-bold">Room: {room}</h1>
-          <button onClick={onLeave} className="bg-red-600 px-6 py-2 rounded-xl">Leave</button>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Game: {currentGameId}</h1>
+            <p className="text-gray-400">Room: {currentRoom}</p>
+          </div>
+          <button onClick={onLeave} className="bg-red-600 px-6 py-3 rounded-xl">Leave Game</button>
         </div>
 
-        <div className="mt-4 flex gap-8 text-lg">
+        <div className="mt-6 flex gap-8 text-lg">
           <div>Players: <strong className="text-green-400">{players}/{maxPlayers}</strong></div>
           <div>Ready: <strong className="text-yellow-400">{readyCount}/{players}</strong></div>
           <div>Status: <strong className="capitalize">{status}</strong></div>
         </div>
 
-        {countdown && (
-          <div className="text-6xl font-bold text-red-500 text-center mt-8">
+        {countdown !== null && (
+          <div className="text-6xl font-bold text-red-500 text-center mt-10">
             Starting in {countdown}...
           </div>
         )}
@@ -45,24 +63,26 @@ export default function GameRoom({
       )}
 
       {/* Chat */}
-      <div className="bg-zinc-900 rounded-2xl p-6 h-96 flex flex-col">
-        <div className="flex-1 overflow-auto mb-4 space-y-2">
-          {messages.map((m: any, i: number) => (
-            <div key={i} className="bg-zinc-800 p-3 rounded-xl">
-              <strong>{m.userId}:</strong> {m.message}
+      <div className="bg-zinc-900 rounded-2xl p-6 h-[500px] flex flex-col">
+        <div className="flex-1 overflow-y-auto mb-4 space-y-3">
+          {messages.map((msg: any, i: number) => (
+            <div key={i} className="bg-zinc-800 p-4 rounded-xl">
+              <strong className={msg.fromAdmin ? "text-red-400" : ""}>
+                {msg.userId}:
+              </strong> {msg.message}
             </div>
           ))}
         </div>
 
         <div className="flex gap-2">
           <input
-            value={msg}
-            onChange={(e) => setMsg(e.target.value)}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Type message..."
+            placeholder="Type a message..."
             className="flex-1 p-4 bg-zinc-800 rounded-xl"
           />
-          <button onClick={sendMessage} className="bg-blue-600 px-8 rounded-xl">Send</button>
+          <button onClick={sendMessage} className="bg-blue-600 px-10 rounded-xl font-semibold">Send</button>
         </div>
       </div>
     </div>
