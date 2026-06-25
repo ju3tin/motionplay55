@@ -7,13 +7,6 @@ import {
 } from "react";
 
 
-interface Player {
-  id:string;
-  name:string;
-  score?:number;
-}
-
-
 interface Props {
 
   roomId:string;
@@ -24,8 +17,9 @@ interface Props {
 
   send:(data:any)=>void;
 
-}
+  gameActive:boolean;
 
+}
 
 
 interface Keypoint {
@@ -37,7 +31,6 @@ interface Keypoint {
   score:number;
 
 }
-
 
 
 interface Point {
@@ -80,9 +73,6 @@ const BONES:[number,number][] = [
 
 
 
-
-// T pose target
-
 const TARGET:Point[] = [
 
 {x:0,y:-2},
@@ -116,7 +106,6 @@ const TARGET:Point[] = [
 
 
 
-
 export default function PoseMatchGame({
 
 roomId,
@@ -125,7 +114,9 @@ userId,
 
 players,
 
-send
+send,
+
+gameActive
 
 }:Props){
 
@@ -146,18 +137,40 @@ useRef<any>(null);
 
 
 
-const points =
+const keypoints =
 useRef<Keypoint[]>([]);
 
 
 
-const [ready,setReady] =
+const loaded =
+useRef(false);
+
+
+
+const running =
+useRef(false);
+
+
+
+
+const [modelReady,setModelReady] =
 useState(false);
 
 
 
 const [score,setScore] =
 useState(0);
+
+
+
+const [timeLeft,setTimeLeft] =
+useState(30);
+
+
+
+const [finished,setFinished] =
+useState(false);
+
 
 
 
@@ -176,22 +189,22 @@ const hipY =
 
 
 
-const scale =
+const size =
 Math.hypot(
+
 k[5].x-k[6].x,
+
 k[5].y-k[6].y
+
 )||1;
 
 
 
 return k.map(p=>({
 
-x:
-(p.x-hipX)/scale,
+x:(p.x-hipX)/size,
 
-
-y:
-(p.y-hipY)/scale
+y:(p.y-hipY)/size
 
 }));
 
@@ -201,11 +214,8 @@ y:
 
 
 function compare(
-
 a:Point[],
-
 b:Point[]
-
 ){
 
 
@@ -242,6 +252,7 @@ return Math.max(
 );
 
 
+
 }
 
 
@@ -250,12 +261,17 @@ return Math.max(
 
 
 
-// Load camera + MoveNet
+
+
+//
+// LOAD TENSORFLOW + MOVENET
+// runs while waiting
+//
 
 useEffect(()=>{
 
 
-async function init(){
+async function load(){
 
 
 
@@ -273,6 +289,7 @@ await import(
 await tf.setBackend(
 "webgl"
 );
+
 
 
 await tf.ready();
@@ -305,8 +322,6 @@ pd.movenet
 
 
 
-
-
 const stream =
 await navigator
 .mediaDevices
@@ -326,8 +341,6 @@ facingMode:"user"
 
 
 
-
-
 videoRef.current!.srcObject =
 stream;
 
@@ -337,7 +350,10 @@ await videoRef.current!.play();
 
 
 
-setReady(true);
+loaded.current=true;
+
+
+setModelReady(true);
 
 
 
@@ -345,7 +361,7 @@ setReady(true);
 
 
 
-init();
+load();
 
 
 
@@ -358,46 +374,148 @@ init();
 
 
 
-// Detect poses
+
+//
+// TIMER
+//
 
 useEffect(()=>{
 
 
-if(!ready)
+if(!gameActive)
 return;
 
 
 
-let running=true;
+setTimeLeft(30);
+
+setFinished(false);
 
 
 
-async function loop(){
+const timer =
+setInterval(()=>{
+
+
+setTimeLeft(t=>{
+
+
+if(t<=1){
+
+
+clearInterval(timer);
 
 
 
-while(running){
+setFinished(true);
+
+
+
+send({
+
+event:"pose-finished",
+
+roomId,
+
+userId
+
+});
+
+
+
+return 0;
+
+
+}
+
+
+
+return t-1;
+
+
+
+});
+
+
+
+},1000);
+
+
+
+return()=>{
+
+clearInterval(timer);
+
+};
+
+
+
+},[gameActive]);
+
+
+
+
+
+
+
+
+
+//
+// DETECTION
+//
+
+useEffect(()=>{
+
+
+if(
+!modelReady ||
+!gameActive
+)
+return;
+
+
+
+running.current=true;
+
+
+
+async function detect(){
+
+
+while(
+running.current &&
+!finished
+){
+
 
 
 const poses =
+
 await detector.current
 .estimatePoses(
+
 videoRef.current!
+
 );
 
 
 
-if(poses.length){
+if(
+poses.length
+){
 
-points.current =
+keypoints.current =
 poses[0].keypoints;
+
 
 }
 
 
 
 await new Promise(r=>
+
 setTimeout(r,80)
+
 );
 
 
@@ -405,24 +523,27 @@ setTimeout(r,80)
 }
 
 
-
 }
 
 
 
-loop();
+detect();
 
 
 
 return()=>{
 
-running=false;
+running.current=false;
 
 };
 
 
 
-},[ready]);
+},[
+modelReady,
+gameActive,
+finished
+]);
 
 
 
@@ -433,12 +554,17 @@ running=false;
 
 
 
-// Render
+
+//
+// DRAW
+//
 
 useEffect(()=>{
 
 
-if(!ready)
+if(
+!modelReady
+)
 return;
 
 
@@ -452,21 +578,20 @@ canvas.getContext("2d")!;
 
 
 
+
 function resize(){
 
 canvas.width =
-window.innerWidth;
+innerWidth;
 
 
 canvas.height =
-window.innerHeight;
+innerHeight;
 
 }
 
 
-
 resize();
-
 
 
 window.addEventListener(
@@ -493,7 +618,6 @@ videoRef.current!;
 
 if(video.readyState<2)
 return;
-
 
 
 
@@ -547,6 +671,7 @@ const oy =
 
 
 
+
 // mirror camera
 
 
@@ -555,15 +680,21 @@ ctx.save();
 
 
 ctx.translate(
+
 ox+w,
+
 oy
+
 );
 
 
 
 ctx.scale(
+
 -1,
+
 1
+
 );
 
 
@@ -592,12 +723,16 @@ ctx.restore();
 
 
 
+
 const k =
-points.current;
+keypoints.current;
 
 
 
-if(k.length){
+if(
+gameActive &&
+k.length
+){
 
 
 
@@ -606,19 +741,20 @@ normalize(k);
 
 
 
-const currentScore =
+const current =
 Math.round(
+
 compare(
 pose,
 TARGET
+
 )
+
 );
 
 
 
-setScore(currentScore);
-
-
+setScore(current);
 
 
 
@@ -630,9 +766,10 @@ roomId,
 
 userId,
 
-score:currentScore
+score:current
 
 });
+
 
 
 
@@ -643,14 +780,15 @@ function map(
 p:Keypoint
 ){
 
-
 return {
 
 x:
+
 ox+w-p.x*scale,
 
 
 y:
+
 oy+p.y*scale
 
 };
@@ -663,12 +801,12 @@ oy+p.y*scale
 
 
 
+
 ctx.strokeStyle =
 "#00ffcc";
 
 
 ctx.lineWidth=6;
-
 
 
 
@@ -687,16 +825,19 @@ map(k[b]);
 ctx.beginPath();
 
 
+
 ctx.moveTo(
 A.x,
 A.y
 );
 
 
+
 ctx.lineTo(
 B.x,
 B.y
 );
+
 
 
 ctx.stroke();
@@ -713,7 +854,9 @@ ctx.stroke();
 
 
 
-// Ghost pose
+
+
+// target
 
 
 ctx.globalAlpha=.35;
@@ -723,7 +866,6 @@ ctx.strokeStyle="#ff0066";
 
 
 ctx.lineWidth=10;
-
 
 
 
@@ -744,7 +886,6 @@ ctx.moveTo(
 canvas.width/2+
 TARGET[i-1].x*80,
 
-
 canvas.height/2+
 TARGET[i-1].y*80
 
@@ -757,7 +898,6 @@ ctx.lineTo(
 canvas.width/2+
 TARGET[i].x*80,
 
-
 canvas.height/2+
 TARGET[i].y*80
 
@@ -766,7 +906,6 @@ TARGET[i].y*80
 
 
 ctx.stroke();
-
 
 
 }
@@ -785,7 +924,6 @@ draw();
 
 
 
-
 return()=>{
 
 window.removeEventListener(
@@ -797,7 +935,10 @@ resize
 
 
 
-},[ready]);
+},[
+modelReady,
+gameActive
+]);
 
 
 
@@ -813,15 +954,15 @@ return (
 
 style={{
 
-position:"relative",
-
 width:"100vw",
 
 height:"100vh",
 
 overflow:"hidden",
 
-background:"#000"
+background:"#000",
+
+position:"relative"
 
 }}
 
@@ -843,7 +984,6 @@ display:"none"
 }}
 
 />
-
 
 
 
@@ -874,9 +1014,9 @@ top:30,
 
 left:30,
 
-color:"#fff",
+color:"white",
 
-fontSize:32,
+fontSize:30,
 
 fontFamily:"monospace"
 
@@ -884,7 +1024,27 @@ fontFamily:"monospace"
 
 >
 
+<div>
 MATCH {score}%
+</div>
+
+
+<div>
+TIME {timeLeft}s
+</div>
+
+
+
+{
+finished &&
+
+<div>
+
+ROUND END
+
+</div>
+
+}
 
 
 </div>
