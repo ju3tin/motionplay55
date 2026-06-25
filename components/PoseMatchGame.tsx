@@ -84,14 +84,14 @@ gameActive
 
 
 const videoRef =
-useRef<any>();
+useRef<any>(null);
 
 const canvasRef =
-useRef<any>();
+useRef<any>(null);
 
 
 const detector =
-useRef<any>();
+useRef<any>(null);
 
 
 const points =
