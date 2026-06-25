@@ -3,576 +3,631 @@
 import { useEffect, useRef, useState } from "react";
 
 interface Keypoint {
-  x: number;
-  y: number;
-  score: number;
+  x:number;
+  y:number;
+  score:number;
 }
 
 interface Point {
-  x: number;
-  y: number;
+  x:number;
+  y:number;
 }
 
-const CONNECTIONS: [number, number][] = [
-  [5, 6],
-  [5, 7],
-  [7, 9],
-  [6, 8],
-  [8, 10],
-  [5, 11],
-  [6, 12],
-  [11, 12],
-  [11, 13],
-  [13, 15],
-  [12, 14],
-  [14, 16],
-  [0, 1],
-  [1, 3],
-  [0, 2],
-  [2, 4],
+
+const CONNECTIONS:[number,number][]=[
+[0,1],[0,2],
+[1,3],[2,4],
+[5,6],
+[5,7],[7,9],
+[6,8],[8,10],
+[5,11],[6,12],
+[11,12],
+[11,13],[13,15],
+[12,14],[14,16]
 ];
 
 
-// Normalized target poses
-const TARGETS = [
-  {
-    name: "T Pose",
-    pose: [
-      { x: 0, y: -2 },
-      { x: 0, y: -2 },
-
-      { x: -0.5, y: -1.8 },
-      { x: 0.5, y: -1.8 },
-
-      { x: -1.8, y: -1 },
-      { x: 1.8, y: -1 },
-
-      { x: -1, y: 0 },
-      { x: 1, y: 0 },
-
-      { x: -1.2, y: 1.2 },
-      { x: 1.2, y: 1.2 },
-
-      { x: -0.7, y: 1.5 },
-      { x: 0.7, y: 1.5 },
-
-      { x: -0.8, y: 2.5 },
-      { x: 0.8, y: 2.5 },
-
-      { x: -0.8, y: 3.5 },
-      { x: 0.8, y: 3.5 },
-
-      { x: -0.8, y: 3.5 },
-    ],
-  },
+const TARGET=[
+{x:0,y:-2},
+{x:0,y:-2},
+{x:-.5,y:-1.7},
+{x:.5,y:-1.7},
+{x:-1.8,y:-1},
+{x:1.8,y:-1},
+{x:-1,y:0},
+{x:1,y:0},
+{x:-1.2,y:1},
+{x:1.2,y:1},
+{x:-.7,y:1.5},
+{x:.7,y:1.5},
+{x:-.7,y:2.5},
+{x:.7,y:2.5},
+{x:-.7,y:3.5},
+{x:.7,y:3.5},
+{x:.7,y:3.5}
 ];
 
 
-export default function Game() {
 
-  const videoRef =
-    useRef<HTMLVideoElement>(null);
+export default function Page(){
 
-  const canvasRef =
-    useRef<HTMLCanvasElement>(null);
 
+const videoRef=
+useRef<HTMLVideoElement>(null);
 
-  const detector =
-    useRef<any>(null);
 
+const canvasRef=
+useRef<HTMLCanvasElement>(null);
 
-  const points =
-    useRef<Keypoint[]>([]);
 
+const detector=
+useRef<any>(null);
 
 
-  const [ready,setReady] =
-    useState(false);
+const keypoints=
+useRef<Keypoint[]>([]);
 
 
-  const [score,setScore] =
-    useState(0);
 
+const [ready,setReady]=
+useState(false);
 
-  const [level,setLevel] =
-    useState(0);
 
+const [score,setScore]=
+useState(0);
 
-  const [hold,setHold] =
-    useState(0);
 
+const [hold,setHold]=
+useState(0);
 
 
-  function normalizePose(
-    k: Keypoint[]
-  ): Point[] {
 
 
-    const hipX =
-      (k[11].x + k[12].x) / 2;
 
-    const hipY =
-      (k[11].y + k[12].y) / 2;
+function normalize(k:Keypoint[]):Point[]{
 
 
-    const scale =
-      Math.hypot(
-        k[5].x - k[6].x,
-        k[5].y - k[6].y
-      ) || 1;
+const cx=
+(k[11].x+k[12].x)/2;
 
 
+const cy=
+(k[11].y+k[12].y)/2;
 
-    return k.map(p=>({
 
-      x:
-      (p.x - hipX) / scale,
 
-      y:
-      (p.y - hipY) / scale
+const size=
+Math.hypot(
+k[5].x-k[6].x,
+k[5].y-k[6].y
+)||1;
 
-    }));
 
-  }
 
+return k.map(p=>({
 
+x:(p.x-cx)/size,
+y:(p.y-cy)/size
 
+}));
 
-  function comparePose(
-    a:Point[],
-    b:Point[]
-  ){
+}
 
-    let total = 0;
 
 
-    for(
-      let i=0;
-      i<a.length;
-      i++
-    ){
 
-      total += Math.hypot(
-        a[i].x - b[i].x,
-        a[i].y - b[i].y
-      );
 
-    }
+function similarity(
+a:Point[],
+b:Point[]
+){
 
+let total=0;
 
-    const avg =
-      total / a.length;
 
+for(let i=0;i<a.length;i++){
 
-    return Math.max(
-      0,
-      100 - avg * 40
-    );
+total+=Math.hypot(
+a[i].x-b[i].x,
+a[i].y-b[i].y
+);
 
-  }
+}
 
 
+return Math.max(
+0,
+100-(total/a.length)*40
+);
 
+}
 
 
-  useEffect(()=>{
 
 
-    async function start(){
 
 
-      const tf =
-      await import("@tensorflow/tfjs");
 
+useEffect(()=>{
 
-      await import(
-        "@tensorflow/tfjs-backend-webgl"
-      );
 
+(async()=>{
 
-      await tf.setBackend(
-        "webgl"
-      );
 
+const tf=
+await import("@tensorflow/tfjs");
 
-      await tf.ready();
 
+await import(
+"@tensorflow/tfjs-backend-webgl"
+);
 
 
-      const pd =
-      await import(
-        "@tensorflow-models/pose-detection"
-      );
+await tf.setBackend(
+"webgl"
+);
 
 
+await tf.ready();
 
-      detector.current =
-      await pd.createDetector(
-        pd.SupportedModels.MoveNet,
-        {
-          modelType:
-          pd.movenet
-          .modelType
-          .SINGLEPOSE_LIGHTNING
-        }
-      );
 
 
+const pd=
+await import(
+"@tensorflow-models/pose-detection"
+);
 
-      const stream =
-      await navigator.mediaDevices
-      .getUserMedia({
-        video:{
-          width:1280,
-          height:720
-        }
-      });
 
 
+detector.current=
+await pd.createDetector(
+pd.SupportedModels.MoveNet,
+{
+modelType:
+pd.movenet
+.modelType
+.SINGLEPOSE_LIGHTNING
+}
+);
 
-      const video =
-      videoRef.current!;
 
 
-      video.srcObject =
-      stream;
+const stream=
+await navigator.mediaDevices
+.getUserMedia({
 
+video:{
+width:1280,
+height:720,
+facingMode:"user"
+}
 
-      await video.play();
+});
 
 
 
-      setReady(true);
+videoRef.current!.srcObject=
+stream;
 
 
-    }
 
+await videoRef.current!.play();
 
 
-    start();
+setReady(true);
 
 
-  },[]);
 
+})();
 
 
 
+},[]);
 
-  useEffect(()=>{
 
 
-    if(!ready)
-      return;
 
 
 
-    let active=true;
 
+useEffect(()=>{
 
 
-    async function detect(){
+if(!ready)return;
 
 
-      while(active){
+let running=true;
 
 
-        const poses =
-        await detector.current
-        .estimatePoses(
-          videoRef.current!
-        );
 
+async function loop(){
 
 
-        if(
-          poses &&
-          poses.length
-        ){
+while(running){
 
-          points.current =
-          poses[0].keypoints;
 
-        }
+const poses=
+await detector.current
+.estimatePoses(
+videoRef.current!
+);
 
 
 
-        await new Promise(r=>
-          setTimeout(r,80)
-        );
+if(poses.length)
+keypoints.current=
+poses[0].keypoints;
 
 
-      }
 
+await new Promise(r=>
+setTimeout(r,80)
+);
 
-    }
 
+}
 
-    detect();
 
+}
 
 
-    return()=>{
-      active=false;
-    }
+loop();
 
 
 
-  },[ready]);
+return()=>{
+running=false;
+}
 
 
+},[ready]);
 
 
 
 
 
-  useEffect(()=>{
 
 
-    if(!ready)
-      return;
 
 
+useEffect(()=>{
 
-    const canvas =
-    canvasRef.current!;
 
+if(!ready)return;
 
-    const ctx =
-    canvas.getContext("2d")!;
 
+const canvas=
+canvasRef.current!;
 
 
-    canvas.width =
-    window.innerWidth;
+const ctx=
+canvas.getContext("2d")!;
 
 
-    canvas.height =
-    window.innerHeight;
 
+function resize(){
 
+canvas.width=
+innerWidth;
 
 
+canvas.height=
+innerHeight;
 
-    function draw(){
+}
 
 
-      requestAnimationFrame(draw);
+resize();
 
+window.addEventListener(
+"resize",
+resize
+);
 
 
-      ctx.fillStyle="#000";
 
+function draw(){
 
-      ctx.fillRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
 
+requestAnimationFrame(draw);
 
 
-      const k =
-      points.current;
 
+const video=
+videoRef.current!;
 
 
-      if(k.length){
 
+if(video.readyState<2)
+return;
 
-        const player =
-        normalizePose(k);
 
 
+const vw=
+video.videoWidth;
 
-        const target =
-        TARGETS[level].pose;
 
+const vh=
+video.videoHeight;
 
 
-        const s =
-        comparePose(
-          player,
-          target
-        );
 
+const cw=
+canvas.width;
 
 
-        setScore(
-          Math.round(s)
-        );
+const ch=
+canvas.height;
 
 
 
-        if(s>85){
+const scale=
+Math.min(
+cw/vw,
+ch/vh
+);
 
 
-          setHold(h=>{
 
+const w=
+vw*scale;
 
-            if(h>=25){
 
+const h=
+vh*scale;
 
-              setLevel(
-                x=>
-                (x+1)
-                %
-                TARGETS.length
-              );
 
 
-              return 0;
+const ox=
+(cw-w)/2;
 
 
-            }
+const oy=
+(ch-h)/2;
 
 
-            return h+1;
 
 
-          });
+ctx.fillStyle="#000";
 
+ctx.fillRect(
+0,
+0,
+cw,
+ch
+);
 
-        }
-        else{
 
 
-          setHold(0);
+// CAMERA MIRROR
 
+ctx.save();
 
-        }
 
+ctx.translate(
+ox+w,
+oy
+);
 
 
+ctx.scale(
+-1,
+1
+);
 
 
+ctx.drawImage(
+video,
+0,
+0,
+w,
+h
+);
 
-        ctx.strokeStyle =
-        "#00ffcc";
 
+ctx.restore();
 
-        ctx.lineWidth=6;
 
 
 
-        for(
-          const [a,b]
-          of CONNECTIONS
-        ){
 
+const k=
+keypoints.current;
 
-          const A=k[a];
-          const B=k[b];
 
 
-          if(!A||!B)
-            continue;
+if(k.length){
 
 
 
-          ctx.beginPath();
+const points=
+normalize(k);
 
 
-          ctx.moveTo(
-            A.x,
-            A.y
-          );
+const s=
+similarity(
+points,
+TARGET
+);
 
 
-          ctx.lineTo(
-            B.x,
-            B.y
-          );
 
+setScore(
+Math.round(s)
+);
 
-          ctx.stroke();
 
 
-        }
+if(s>85){
 
+setHold(x=>{
 
-      }
+if(x>25)
+return 0;
 
 
+return x+1;
 
+});
 
 
+}else{
 
-      // draw ghost
+setHold(0);
 
+}
 
-      const ghost =
-      TARGETS[level].pose;
 
 
 
-      ctx.globalAlpha=.35;
 
+function map(p:Keypoint){
 
-      ctx.strokeStyle="#ff0066";
+return {
 
+x:
+ox+w-(p.x*scale),
 
-      ctx.lineWidth=10;
+y:
+oy+(p.y*scale)
 
+};
 
+}
 
-      for(
-        let i=1;
-        i<ghost.length;
-        i++
-      ){
 
 
-        ctx.beginPath();
 
+// player skeleton
 
-        ctx.moveTo(
-          canvas.width/2+
-          ghost[i-1].x*80,
+ctx.strokeStyle=
+"#00ffcc";
 
-          canvas.height/2+
-          ghost[i-1].y*80
-        );
 
+ctx.lineWidth=6;
 
-        ctx.lineTo(
-          canvas.width/2+
-          ghost[i].x*80,
 
-          canvas.height/2+
-          ghost[i].y*80
-        );
 
+for(
+const [a,b]
+of CONNECTIONS
+){
 
-        ctx.stroke();
 
+const A=
+map(k[a]);
 
-      }
 
+const B=
+map(k[b]);
 
 
-      ctx.globalAlpha=1;
 
+ctx.beginPath();
 
 
-    }
+ctx.moveTo(
+A.x,
+A.y
+);
 
 
+ctx.lineTo(
+B.x,
+B.y
+);
 
-    draw();
 
+ctx.stroke();
 
 
-  },[
-    ready,
-    level
-  ]);
+}
 
 
 
 
 
-  return (
+
+
+}
+
+
+
+// ghost
+
+ctx.globalAlpha=.35;
+
+ctx.strokeStyle="#ff0066";
+
+ctx.lineWidth=8;
+
+
+
+for(
+let i=1;
+i<TARGET.length;
+i++
+){
+
+ctx.beginPath();
+
+
+ctx.moveTo(
+cw/2+
+TARGET[i-1].x*80,
+
+ch/2+
+TARGET[i-1].y*80
+);
+
+
+
+ctx.lineTo(
+cw/2+
+TARGET[i].x*80,
+
+ch/2+
+TARGET[i].y*80
+);
+
+
+ctx.stroke();
+
+}
+
+
+ctx.globalAlpha=1;
+
+
+
+}
+
+
+
+draw();
+
+
+
+return()=>{
+
+window.removeEventListener(
+"resize",
+resize
+);
+
+}
+
+
+
+},[ready]);
+
+
+
+
+
+
+
+return(
 
 <div
 style={{
@@ -586,6 +641,8 @@ background:"#000"
 
 <video
 ref={videoRef}
+muted
+playsInline
 style={{
 display:"none"
 }}
@@ -607,28 +664,18 @@ style={{
 position:"absolute",
 top:30,
 left:30,
-color:"#fff",
-fontSize:32,
+color:"white",
+fontSize:30,
 fontFamily:"monospace"
 }}
 >
 
 <div>
-Pose:
-{TARGETS[level].name}
+MATCH {score}%
 </div>
 
 <div>
-Match:
-{score}%
-</div>
-
-
-<div>
-Hold:
-{Math.round(
-hold/25*2
-)}s
+HOLD {hold}/25
 </div>
 
 
@@ -637,6 +684,7 @@ hold/25*2
 
 </div>
 
-  );
+
+)
 
 }
