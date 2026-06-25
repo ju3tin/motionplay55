@@ -484,80 +484,113 @@ gameActive
 
 
 // DRAW
+useEffect(() => {
+  const canvasEl = canvasRef.current;
+  const videoEl = videoRef.current;
 
-useEffect(()=>{
+  if (!canvasEl || !videoEl) return;
 
+  const ctx = canvasEl.getContext("2d");
 
-const canvas =
-canvasRef.current;
+  if (!ctx) return;
 
+  function resize() {
+    canvasEl.width = window.innerWidth;
+    canvasEl.height = window.innerHeight;
+  }
 
-const video =
-videoRef.current;
+  resize();
 
+  window.addEventListener("resize", resize);
 
+  function draw() {
+    requestAnimationFrame(draw);
 
-if(
-!canvas ||
-!video
-)
-return;
+    if (videoEl.readyState < 2) return;
 
+    ctx.clearRect(
+      0,
+      0,
+      canvasEl.width,
+      canvasEl.height
+    );
 
+    // CAMERA
+    ctx.save();
 
-const ctx =
-canvas.getContext("2d");
+    ctx.translate(canvasEl.width, 0);
+    ctx.scale(-1, 1);
 
+    ctx.drawImage(
+      videoEl,
+      0,
+      0,
+      canvasEl.width,
+      canvasEl.height
+    );
 
+    ctx.restore();
 
-if(!ctx)
-return;
+    const k = points.current;
 
+    // PLAYER SKELETON
+    ctx.strokeStyle = "#00ffcc";
+    ctx.lineWidth = 8;
 
+    BONES.forEach(([a, b]) => {
+      const A = k[a];
+      const B = k[b];
 
-function resize(){
+      if (!A || !B) return;
 
-canvas.width =
-window.innerWidth;
+      ctx.beginPath();
 
+      ctx.moveTo(
+        canvasEl.width - A.x,
+        A.y
+      );
 
-canvas.height =
-window.innerHeight;
+      ctx.lineTo(
+        canvasEl.width - B.x,
+        B.y
+      );
 
+      ctx.stroke();
+    });
 
-}
+    // TARGET GHOST
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#ff0066";
+    ctx.lineWidth = 10;
 
+    function mapTarget(p: number[]) {
+      return {
+        x: canvasEl.width / 2 + p[0] * 120,
+        y: canvasEl.height / 2 + p[1] * 120,
+      };
+    }
 
+    BONES.forEach(([a, b]) => {
+      const A = mapTarget(target.points[a]);
+      const B = mapTarget(target.points[b]);
 
-resize();
+      ctx.beginPath();
 
+      ctx.moveTo(A.x, A.y);
+      ctx.lineTo(B.x, B.y);
 
+      ctx.stroke();
+    });
 
-function draw(){
+    ctx.globalAlpha = 1;
+  }
 
+  draw();
 
-requestAnimationFrame(draw);
-
-
-
-if(
-video.readyState < 2
-)
-return;
-
-
-
-ctx.clearRect(
-
-0,
-
-0,
-
-canvas.width,
-
-canvas.height
-
-);
+  return () => {
+    window.removeEventListener("resize", resize);
+  };
+}, [target]);
 
 
 
