@@ -5,6 +5,7 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000';
 
 interface Message {
   event: string;
+  gameId?: string;
   room?: string;
   userId?: string;
   message?: string;
@@ -21,7 +22,9 @@ export function useGameSocket() {
   const socketRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>("");
   const [players, setPlayers] = useState(0);
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [readyCount, setReadyCount] = useState(0);
@@ -49,27 +52,40 @@ export function useGameSocket() {
         case "connected":
           setIsAdmin(!!data.isAdmin);
           break;
+
         case "room-created":
-        case "room-joined":
-          setCurrentRoom(data.room!);
+          setCurrentGameId(data.gameId!);
+          setCurrentRoom(data.room || data.gameId!);
           setPlayers(data.players || 1);
           setMaxPlayers(data.maxPlayers || 4);
           break;
+
+        case "room-joined":
+          setCurrentGameId(data.gameId!);
+          setCurrentRoom(data.room || data.gameId!);
+          setPlayers(data.players || 1);
+          setMaxPlayers(data.maxPlayers || 4);
+          break;
+
         case "player-joined":
         case "player-left":
           setPlayers(data.players || 0);
           break;
+
         case "ready-update":
           setReadyCount(data.readyCount || 0);
           setPlayers(data.totalPlayers || 0);
           break;
+
         case "countdown":
           setCountdown(data.timeLeft ?? null);
           break;
+
         case "game-start":
           setStatus("playing");
           setCountdown(null);
           break;
+
         case "chat":
           setMessages(prev => [...prev, data]);
           break;
@@ -88,8 +104,21 @@ export function useGameSocket() {
   const disconnect = () => socketRef.current?.close();
 
   return {
-    isConnected, isAdmin, currentRoom, players, maxPlayers,
-    readyCount, status, countdown, messages,
-    connect, send, disconnect, setMessages
+    isConnected,
+    isAdmin,
+    currentGameId,
+    currentRoom,
+    userId,
+    players,
+    maxPlayers,
+    readyCount,
+    status,
+    countdown,
+    messages,
+    connect,
+    send,
+    disconnect,
+    setMessages,
+    setUserId
   };
 }
