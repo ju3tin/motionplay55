@@ -3,10 +3,18 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Script from "next/script";
 
+// Extend Window interface for CDN globals
+declare global {
+  interface Window {
+    tf: any;
+    poseDetection: any;
+  }
+}
+
 export interface GameProps {
   roomId?: string;
   currentGameId?: string;
-  players: any[] | number;        // ✅ Support both array and number
+  players: any[] | number;
   userId: string;
   send: (data: any) => void;
   gameActive?: boolean;
@@ -54,7 +62,7 @@ export default function PunchTargetGame({
   const animationRef = useRef<number | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle both array and number for players
+  // Support both array and number for players
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -64,9 +72,12 @@ export default function PunchTargetGame({
 
   const isHost = playersList[0]?.id === userId;
 
-  // Load TensorFlow from CDN
+  // Load Model using CDN globals
   const loadModel = useCallback(async () => {
-    if (!scriptsLoaded || !window.tf || !window.poseDetection) return false;
+    if (!scriptsLoaded || !window.tf || !window.poseDetection) {
+      console.log("Waiting for scripts...");
+      return false;
+    }
 
     try {
       await window.tf.setBackend("webgl");
@@ -76,11 +87,12 @@ export default function PunchTargetGame({
         window.poseDetection.SupportedModels.MoveNet,
         { modelType: "SinglePose.Thunder" }
       );
-      console.log("✅ MoveNet Loaded via CDN");
+
+      console.log("✅ MoveNet Thunder Loaded via CDN");
       return true;
     } catch (err) {
-      console.error(err);
-      setErrorMsg("Failed to load pose detector");
+      console.error("Model load error:", err);
+      setErrorMsg("Failed to load AI model");
       return false;
     }
   }, [scriptsLoaded]);
@@ -118,7 +130,13 @@ export default function PunchTargetGame({
       setScore(newScore);
       if (newCombo > maxCombo) setMaxCombo(newCombo);
 
-      send({ type: "SCORE_UPDATE", roomId: effectiveRoomId, userId, score: newScore, combo: newCombo });
+      send({
+        type: "SCORE_UPDATE",
+        roomId: effectiveRoomId,
+        userId,
+        score: newScore,
+        combo: newCombo,
+      });
     }
   }, [score, combo, maxCombo, send, effectiveRoomId, userId]);
 
@@ -153,10 +171,15 @@ export default function PunchTargetGame({
   }, []);
 
   const startGame = async () => {
-    await loadModel();
+    const loaded = await loadModel();
+    if (!loaded) return;
     await startCamera();
+
     targetsRef.current = [];
-    setScore(0); setCombo(0); setMaxCombo(0); setTimeLeft(GAME_DURATION);
+    setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
+    setTimeLeft(GAME_DURATION);
     setGameState("countdown");
 
     let c = 3;
@@ -169,7 +192,7 @@ export default function PunchTargetGame({
     }, 1000);
   };
 
-  // Main Render + Detection Loop
+  // Main Render + Skeleton Loop
   useEffect(() => {
     if (gameState !== "playing" || isSpectator) return;
 
@@ -288,9 +311,12 @@ export default function PunchTargetGame({
 
   return (
     <>
-      <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" strategy="afterInteractive" />
-      <Script 
-        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3" 
+      <Script
+        src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"
+        strategy="afterInteractive"
+      />
+      <Script
+        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"
         strategy="afterInteractive"
         onLoad={() => setScriptsLoaded(true)}
       />
