@@ -1,15 +1,11 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import Script from "next/script";
 
-// Global types for CDN
-declare global {
-  interface Window {
-    tf: any;
-    poseDetection: any;
-  }
-}
+const GAME_DURATION = 60;
+const SPAWN_INTERVAL = 800;
+const TARGET_LIFETIME = 2200;
+const HIT_RADIUS = 55;
 
 export interface GameProps {
   roomId?: string;
@@ -21,15 +17,7 @@ export interface GameProps {
   status?: string;
   onReady?: () => void;
   onLeave?: () => void;
-  isSpectator?: boolean;
 }
-
-const GAME_DURATION = 60;
-const SPAWN_INTERVAL = 800;
-const TARGET_LIFETIME = 2200;
-const HIT_RADIUS = 55;
-
-type GameState = "idle" | "loading" | "countdown" | "playing" | "ended";
 
 export default function PunchTargetGame({
   roomId,
@@ -41,27 +29,27 @@ export default function PunchTargetGame({
   status,
   onReady,
   onLeave,
-  isSpectator = false,
 }: GameProps) {
   const effectiveRoomId = roomId || currentGameId || "room1";
 
-  const gameAreaRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gameAreaRef = useRef<HTMLDivElement>(null);
 
-  const [gameState, setGameState] = useState<GameState>("idle");
+  const [gameState, setGameState] = useState<"idle" | "loading" | "countdown" | "playing" | "ended">("idle");
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [errorMsg, setErrorMsg] = useState("");
-  const [scriptsLoaded, setScriptsLoaded] = useState(false);
 
   const detectorRef = useRef<any>(null);
   const targetsRef = useRef<any[]>([]);
   const animationRef = useRef<number | null>(null);
-  const spawnRef = useRef<NodeJS.Timeout | null>(null);
+  const spawnIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Players handling
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -71,33 +59,28 @@ export default function PunchTargetGame({
 
   const isHost = playersList[0]?.id === userId;
 
-  // Load Model with better CDN handling
+  // Load Model
   const loadModel = useCallback(async () => {
-    if (!scriptsLoaded || !window.tf || !window.poseDetection) {
-      setErrorMsg("AI scripts still loading...");
-      return false;
-    }
-
     try {
-      await window.tf.setBackend("webgl");
-      await window.tf.ready();
+      setGameState("loading");
+      const tf = await import("@tensorflow/tfjs");
+      await import("@tensorflow/tfjs-backend-webgl");
+      await tf.setBackend("webgl");
+      await tf.ready();
 
-      // Correct way for CDN v2.1.3
-      detectorRef.current = await window.poseDetection.createDetector(
-        window.poseDetection.SupportedModels.MoveNet,
-        { 
-          modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_THUNDER 
-        }
+      const pd = await import("@tensorflow-models/pose-detection");
+      detectorRef.current = await pd.createDetector(
+        pd.SupportedModels.MoveNet,
+        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
-
-      console.log("✅ MoveNet Thunder Loaded Successfully");
+      console.log("✅ Model Loaded");
       return true;
     } catch (err) {
-      console.error("Model load error:", err);
-      setErrorMsg("Failed to load pose model. Refresh page.");
+      console.error(err);
+      setErrorMsg("Failed to load model");
       return false;
     }
-  }, [scriptsLoaded]);
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -140,7 +123,7 @@ export default function PunchTargetGame({
         combo: newCombo,
       });
     }
-  }, [score, combo, maxCombo, send, effectiveRoomId, userId]);
+  }, [combo, score, maxCombo, send, effectiveRoomId, userId]);
 
   const spawnTarget = useCallback(() => {
     if (!isHost || gameState !== "playing") return;
@@ -148,10 +131,11 @@ export default function PunchTargetGame({
     if (!area) return;
 
     const rect = area.getBoundingClientRect();
+    const padding = 120;
     const target = {
       id: Date.now(),
-      x: 100 + Math.random() * (rect.width - 200),
-      y: 100 + Math.random() * (rect.height - 250),
+      x: padding + Math.random() * (rect.width - padding * 2),
+      y: padding + Math.random() * (rect.height - padding * 2),
       r: 38,
       born: Date.now(),
       hit: false,
@@ -160,7 +144,7 @@ export default function PunchTargetGame({
     send({ type: "TARGET", roomId: effectiveRoomId, target });
   }, [isHost, gameState, send, effectiveRoomId]);
 
-  // Receive targets
+  // Receive messages from other players / host
   useEffect(() => {
     const handler = (e: any) => {
       const d = e.detail;
@@ -175,25 +159,49 @@ export default function PunchTargetGame({
   const startGame = async () => {
     const loaded = await loadModel();
     if (!loaded) return;
-    await startCamera();
 
+    await startCamera();
     targetsRef.current = [];
-    setScore(0); setCombo(0); setMaxCombo(0); setTimeLeft(GAME_DURATION);
+    setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
+    setTimeLeft(GAME_DURATION);
+
     setGameState("countdown");
 
     let c = 3;
-    const int = setInterval(() => {
+    const cd = setInterval(() => {
       c--;
       if (c <= 0) {
-        clearInterval(int);
+        clearInterval(cd);
         setGameState("playing");
+        startGameSystems();
       }
     }, 1000);
   };
 
+  const startGameSystems = () => {
+    // Timer
+    timerIntervalRef.current = setInterval(() => {
+      setTimeLeft(prev => prev <= 1 ? (endGame(), 0) : prev - 1);
+    }, 1000);
+
+    // Host spawns targets
+    if (isHost) {
+      spawnIntervalRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
+    }
+  };
+
+  const endGame = () => {
+    setGameState("ended");
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (spawnIntervalRef.current) clearInterval(spawnIntervalRef.current);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+  };
+
   // Render + Detection Loop
   useEffect(() => {
-    if (gameState !== "playing" || isSpectator) return;
+    if (gameState !== "playing") return;
 
     const canvas = canvasRef.current;
     const area = gameAreaRef.current;
@@ -214,10 +222,11 @@ export default function PunchTargetGame({
 
       // Draw Targets
       targetsRef.current.forEach(t => {
-        const x = t.x, y = t.y;
+        const x = t.x;
+        const y = t.y;
         ctx.save();
         if (!t.hit) {
-          const pulse = 1 + Math.sin(now / 280) * 0.1;
+          const pulse = 1 + Math.sin(now / 280) * 0.12;
           ctx.translate(x, y);
           ctx.scale(pulse, pulse);
           ctx.translate(-x, -y);
@@ -234,7 +243,7 @@ export default function PunchTargetGame({
         ctx.fillStyle = t.hit ? "#00ff88" : "#ff2255";
         ctx.fill();
 
-        ctx.font = `${t.r * 1.3}px sans-serif`;
+        ctx.font = `${t.r * 1.4}px sans-serif`;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -242,7 +251,7 @@ export default function PunchTargetGame({
         ctx.restore();
       });
 
-      // Skeleton + Hit Detection
+      // Pose Detection + Skeleton
       if (timestamp - lastDetection > 45 && detectorRef.current && videoRef.current) {
         lastDetection = timestamp;
         try {
@@ -257,9 +266,10 @@ export default function PunchTargetGame({
             const scaleY = h / (videoRef.current.videoHeight || 480);
 
             const keypoints = pose.keypoints;
+
+            // Draw Skeleton
             ctx.strokeStyle = "#00ffff";
             ctx.lineWidth = 5;
-
             const connections = [[5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,13],[13,15],[12,14],[14,16],[11,12]];
 
             connections.forEach(([a, b]) => {
@@ -273,6 +283,7 @@ export default function PunchTargetGame({
               }
             });
 
+            // Keypoints
             keypoints.forEach((kp: any, i: number) => {
               if (kp.score > 0.35) {
                 const x = w - kp.x * scaleX;
@@ -284,6 +295,7 @@ export default function PunchTargetGame({
               }
             });
 
+            // Hit Detection
             [9, 10].forEach(i => {
               const kp = keypoints[i];
               if (kp?.score > 0.33) {
@@ -294,7 +306,7 @@ export default function PunchTargetGame({
             });
           }
         } catch (e) {
-          console.error("Detection error:", e);
+          console.error(e);
         }
       }
 
@@ -306,46 +318,51 @@ export default function PunchTargetGame({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [gameState, isSpectator, checkHit]);
+  }, [gameState, checkHit]);
 
   return (
-    <>
-      <Script
-        src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"
-        strategy="afterInteractive"
-      />
-      <Script
-        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"
-        strategy="afterInteractive"
-        onLoad={() => setScriptsLoaded(true)}
-      />
+    <div style={{ width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "white" }}>
+      <header style={{ position: "fixed", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", zIndex: 100, display: "flex", justifyContent: "space-between" }}>
+        <button onClick={onLeave || (() => window.location.reload())}>← Back</button>
+        <div style={{ display: "flex", gap: "24px", fontSize: "1.2rem" }}>
+          <div>⏱ {`${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`}</div>
+          <div>⚡ {combo}</div>
+          <div>🏆 {score}</div>
+          {isHost && <div style={{ color: "#ff0" }}>👑 HOST</div>}
+        </div>
+      </header>
 
-      <div style={{ position: "relative", width: "100%", height: "100vh", background: "#0a0a12", overflow: "hidden" }}>
-        {!isSpectator && (
-          <div ref={gameAreaRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <video ref={videoRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.25 }} autoPlay playsInline muted />
-            <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, zIndex: 5 }} />
-          </div>
-        )}
-
-        {(gameState === "playing" || gameState === "ended") && (
-          <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.8)", padding: "12px 40px", borderRadius: "50px", zIndex: 100, fontSize: "1.5rem" }}>
-            ⏱ {timeLeft} &nbsp; ⚡ {combo} &nbsp; 🏆 {score}
-          </div>
-        )}
-
-        {gameState === "idle" && !isSpectator && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)", zIndex: 20 }}>
-            <button 
-              onClick={startGame} 
-              disabled={!scriptsLoaded}
-              style={{ padding: "20px 60px", fontSize: "1.6rem", background: "#0066ff", color: "white", border: "none", borderRadius: "16px", cursor: scriptsLoaded ? "pointer" : "not-allowed" }}
-            >
-              {scriptsLoaded ? "Start Game" : "Loading AI Model..."}
-            </button>
-          </div>
-        )}
+      <div ref={gameAreaRef} style={{ position: "relative", width: "100%", height: "100vh" }}>
+        <video ref={videoRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.25 }} autoPlay playsInline muted />
+        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
       </div>
-    </>
+
+      {gameState === "idle" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", zIndex: 10 }}>
+          <button onClick={startGame} style={{ padding: "20px 60px", fontSize: "1.6rem", background: "#0066ff", border: "none", borderRadius: "16px" }}>
+            Start Game
+          </button>
+        </div>
+      )}
+
+      {gameState === "ended" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", zIndex: 30 }}>
+          <div style={{ textAlign: "center" }}>
+            <h1>Game Over!</h1>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", margin: "30px 0" }}>
+              <div>
+                <div style={{ color: "#aaa" }}>Score</div>
+                <div style={{ fontSize: "3.5rem", color: "#00d4ff" }}>{score}</div>
+              </div>
+              <div>
+                <div style={{ color: "#aaa" }}>Max Combo</div>
+                <div style={{ fontSize: "3.5rem", color: "#ffaa00" }}>{maxCombo}</div>
+              </div>
+            </div>
+            <button onClick={() => window.location.reload()} style={{ padding: "14px 40px" }}>Play Again</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
