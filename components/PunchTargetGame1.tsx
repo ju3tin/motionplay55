@@ -1,14 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import Script from "next/script";
-
-declare global {
-  interface Window {
-    tf: any;
-    poseDetection: any;
-  }
-}
 
 const GAME_DURATION = 60;
 const SPAWN_INTERVAL = 800;
@@ -26,22 +18,26 @@ export default function PunchTargetGame() {
   const [maxCombo, setMaxCombo] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [errorMsg, setErrorMsg] = useState("");
-  const [scriptsLoaded, setScriptsLoaded] = useState(false);
 
   const detectorRef = useRef<any>(null);
   const targetsRef = useRef<any[]>([]);
   const animationRef = useRef<number | null>(null);
+  const spawnIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load Model
   const loadModel = useCallback(async () => {
-    if (!window.tf || !window.poseDetection) return false;
     try {
-      await window.tf.setBackend("webgl");
-      await window.tf.ready();
+      setGameState("loading");
+      const tf = await import("@tensorflow/tfjs");
+      await import("@tensorflow/tfjs-backend-webgl");
+      await tf.setBackend("webgl");
+      await tf.ready();
 
-      detectorRef.current = await window.poseDetection.createDetector(
-        window.poseDetection.SupportedModels.MoveNet,
-        { modelType: "SinglePose.Lightning" }
+      const pd = await import("@tensorflow-models/pose-detection");
+      detectorRef.current = await pd.createDetector(
+        pd.SupportedModels.MoveNet,
+        { modelType: pd.movenet.modelType.SINGLEPOSE_LIGHTNING }
       );
       console.log("✅ Model Loaded");
       return true;
@@ -68,6 +64,7 @@ export default function PunchTargetGame() {
 
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
+
     targetsRef.current = targetsRef.current.filter(t => {
       if (t.hit) return false;
       if (Math.hypot(wx - t.x, wy - t.y) < HIT_RADIUS + t.r) {
@@ -96,16 +93,52 @@ export default function PunchTargetGame() {
       id: Date.now(),
       x: padding + Math.random() * (rect.width - padding * 2),
       y: padding + Math.random() * (rect.height - padding * 2),
-      r: 35,
+      r: 38,
       born: Date.now(),
       hit: false,
     });
   }, []);
 
-  // Main Game Loop (Canvas + Skeleton)
-  useEffect(() => {
-    if (gameState !== "playing") return;
+  const startGame = async () => {
+    const loaded = await loadModel();
+    if (!loaded) return;
 
+    await startCamera();
+    targetsRef.current = [];
+    setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
+    setTimeLeft(GAME_DURATION);
+
+    setGameState("countdown");
+
+    let c = 3;
+    const cd = setInterval(() => {
+      c--;
+      if (c <= 0) {
+        clearInterval(cd);
+        setGameState("playing");
+        startGameSystems();
+      }
+    }, 1000);
+  };
+
+  const startGameSystems = () => {
+    // Timer
+    timerIntervalRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Spawn targets
+    spawnIntervalRef.current = setInterval(spawnTarget, SPAWN_INTERVAL);
+
+    // Detection + Render Loop
     const canvas = canvasRef.current;
     const area = gameAreaRef.current;
     if (!canvas || !area) return;
@@ -121,14 +154,12 @@ export default function PunchTargetGame() {
       ctx.clearRect(0, 0, w, h);
 
       const now = Date.now();
-
-      // Update & Draw Targets
       targetsRef.current = targetsRef.current.filter(t => now - t.born <= TARGET_LIFETIME);
 
+      // Draw Targets
       targetsRef.current.forEach(t => {
         const x = t.x;
         const y = t.y;
-
         ctx.save();
         if (!t.hit) {
           const pulse = 1 + Math.sin(now / 280) * 0.12;
@@ -156,7 +187,7 @@ export default function PunchTargetGame() {
         ctx.restore();
       });
 
-      // Skeleton + Detection
+      // Pose Detection + Skeleton
       if (timestamp - lastDetection > 45 && detectorRef.current && videoRef.current) {
         lastDetection = timestamp;
         try {
@@ -172,7 +203,7 @@ export default function PunchTargetGame() {
 
             const keypoints = pose.keypoints;
 
-            // Draw Skeleton
+            // Skeleton
             ctx.strokeStyle = "#00ffff";
             ctx.lineWidth = 5;
             const connections = [[5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,13],[13,15],[12,14],[14,16],[11,12]];
@@ -188,7 +219,7 @@ export default function PunchTargetGame() {
               }
             });
 
-            // Draw Keypoints
+            // Keypoints
             keypoints.forEach((kp: any, i: number) => {
               if (kp.score > 0.35) {
                 const x = w - kp.x * scaleX;
@@ -219,65 +250,59 @@ export default function PunchTargetGame() {
     };
 
     animationRef.current = requestAnimationFrame(loop);
+  };
 
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [gameState, checkHit]);
-
-  const startGame = async () => {
-    await loadModel();
-    await startCamera();
-
-    targetsRef.current = [];
-    setScore(0);
-    setCombo(0);
-    setMaxCombo(0);
-    setTimeLeft(GAME_DURATION);
-
-    setGameState("countdown");
-
-    let c = 3;
-    const cd = setInterval(() => {
-      c--;
-      if (c <= 0) {
-        clearInterval(cd);
-        setGameState("playing");
-        // Start spawning
-        setInterval(spawnTarget, SPAWN_INTERVAL);
-      }
-    }, 1000);
+  const endGame = () => {
+    setGameState("ended");
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (spawnIntervalRef.current) clearInterval(spawnIntervalRef.current);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
   };
 
   return (
-    <>
-      <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" strategy="afterInteractive" />
-      <Script 
-        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3" 
-        strategy="afterInteractive"
-        onLoad={() => setScriptsLoaded(true)}
-      />
-
-      <div style={{ width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden" }}>
-        <div ref={gameAreaRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-          <video ref={videoRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.25 }} autoPlay playsInline muted />
-          <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
-        </div>
-
-        {gameState === "idle" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", zIndex: 10 }}>
-            <button onClick={startGame} style={{ padding: "20px 60px", fontSize: "1.6rem", background: "#0066ff", border: "none", borderRadius: "16px" }}>
-              Start Game
-            </button>
-          </div>
-        )}
-
+    <div style={{ width: "100%", height: "100vh", background: "linear-gradient(to bottom, #0f0f1a, #1a1a2e)", position: "relative", overflow: "hidden", color: "white" }}>
+      <header style={{ position: "fixed", top: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "12px 20px", zIndex: 100, display: "flex", justifyContent: "space-between" }}>
+        <button onClick={() => window.location.reload()}>← Back</button>
         {(gameState === "playing" || gameState === "ended") && (
-          <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.8)", padding: "12px 40px", borderRadius: "50px", zIndex: 100, fontSize: "1.5rem" }}>
-            ⏱ {timeLeft} &nbsp; ⚡ {combo} &nbsp; 🏆 {score}
+          <div style={{ display: "flex", gap: "24px", fontSize: "1.2rem" }}>
+            <div>⏱ {`${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`}</div>
+            <div>⚡ {combo}</div>
+            <div>🏆 {score}</div>
           </div>
         )}
+      </header>
+
+      <div ref={gameAreaRef} style={{ position: "relative", width: "100%", height: "100vh" }}>
+        <video ref={videoRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", opacity: 0.25 }} autoPlay playsInline muted />
+        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
       </div>
-    </>
+
+      {gameState === "idle" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", zIndex: 10 }}>
+          <button onClick={startGame} style={{ padding: "20px 60px", fontSize: "1.6rem", background: "#0066ff", border: "none", borderRadius: "16px" }}>
+            Start Game
+          </button>
+        </div>
+      )}
+
+      {gameState === "ended" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", zIndex: 30 }}>
+          <div style={{ textAlign: "center" }}>
+            <h1>Game Over!</h1>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", margin: "30px 0" }}>
+              <div>
+                <div style={{ color: "#aaa" }}>Score</div>
+                <div style={{ fontSize: "3.5rem", color: "#00d4ff" }}>{score}</div>
+              </div>
+              <div>
+                <div style={{ color: "#aaa" }}>Max Combo</div>
+                <div style={{ fontSize: "3.5rem", color: "#ffaa00" }}>{maxCombo}</div>
+              </div>
+            </div>
+            <button onClick={() => window.location.reload()} style={{ padding: "14px 40px" }}>Play Again</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
