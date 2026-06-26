@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Script from "next/script";
 
-// Extend Window interface for CDN globals
+// Global types for CDN
 declare global {
   interface Window {
     tf: any;
@@ -62,7 +62,6 @@ export default function PunchTargetGame({
   const animationRef = useRef<number | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Support both array and number for players
   const playersList = Array.isArray(playersProp)
     ? playersProp
     : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
@@ -72,10 +71,10 @@ export default function PunchTargetGame({
 
   const isHost = playersList[0]?.id === userId;
 
-  // Load Model using CDN globals
+  // Load Model with better CDN handling
   const loadModel = useCallback(async () => {
     if (!scriptsLoaded || !window.tf || !window.poseDetection) {
-      console.log("Waiting for scripts...");
+      setErrorMsg("AI scripts still loading...");
       return false;
     }
 
@@ -83,16 +82,19 @@ export default function PunchTargetGame({
       await window.tf.setBackend("webgl");
       await window.tf.ready();
 
+      // Correct way for CDN v2.1.3
       detectorRef.current = await window.poseDetection.createDetector(
         window.poseDetection.SupportedModels.MoveNet,
-        { modelType: "SinglePose.Thunder" }
+        { 
+          modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_THUNDER 
+        }
       );
 
-      console.log("✅ MoveNet Thunder Loaded via CDN");
+      console.log("✅ MoveNet Thunder Loaded Successfully");
       return true;
     } catch (err) {
       console.error("Model load error:", err);
-      setErrorMsg("Failed to load AI model");
+      setErrorMsg("Failed to load pose model. Refresh page.");
       return false;
     }
   }, [scriptsLoaded]);
@@ -176,10 +178,7 @@ export default function PunchTargetGame({
     await startCamera();
 
     targetsRef.current = [];
-    setScore(0);
-    setCombo(0);
-    setMaxCombo(0);
-    setTimeLeft(GAME_DURATION);
+    setScore(0); setCombo(0); setMaxCombo(0); setTimeLeft(GAME_DURATION);
     setGameState("countdown");
 
     let c = 3;
@@ -192,7 +191,7 @@ export default function PunchTargetGame({
     }, 1000);
   };
 
-  // Main Render + Skeleton Loop
+  // Render + Detection Loop
   useEffect(() => {
     if (gameState !== "playing" || isSpectator) return;
 
@@ -243,7 +242,7 @@ export default function PunchTargetGame({
         ctx.restore();
       });
 
-      // Skeleton + Detection
+      // Skeleton + Hit Detection
       if (timestamp - lastDetection > 45 && detectorRef.current && videoRef.current) {
         lastDetection = timestamp;
         try {
@@ -295,7 +294,7 @@ export default function PunchTargetGame({
             });
           }
         } catch (e) {
-          console.error(e);
+          console.error("Detection error:", e);
         }
       }
 
