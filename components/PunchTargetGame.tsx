@@ -5,9 +5,14 @@ import Script from "next/script";
 
 export interface GameProps {
   roomId?: string;
-  players: any[];
+  currentGameId?: string;
+  players: any[] | number;        // ✅ Support both array and number
   userId: string;
   send: (data: any) => void;
+  gameActive?: boolean;
+  status?: string;
+  onReady?: () => void;
+  onLeave?: () => void;
   isSpectator?: boolean;
 }
 
@@ -19,12 +24,19 @@ const HIT_RADIUS = 55;
 type GameState = "idle" | "loading" | "countdown" | "playing" | "ended";
 
 export default function PunchTargetGame({
-  roomId = "room1",
-  players,
+  roomId,
+  currentGameId,
+  players: playersProp,
   userId,
   send,
+  gameActive,
+  status,
+  onReady,
+  onLeave,
   isSpectator = false,
 }: GameProps) {
+  const effectiveRoomId = roomId || currentGameId || "room1";
+
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,14 +54,19 @@ export default function PunchTargetGame({
   const animationRef = useRef<number | null>(null);
   const spawnRef = useRef<NodeJS.Timeout | null>(null);
 
-  const isHost = players[0]?.id === userId;
+  // Handle both array and number for players
+  const playersList = Array.isArray(playersProp)
+    ? playersProp
+    : Array.from({ length: Number(playersProp) || 1 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Player ${i + 1}`,
+      }));
 
-  // Load TensorFlow from CDN (exactly like your original HTML)
+  const isHost = playersList[0]?.id === userId;
+
+  // Load TensorFlow from CDN
   const loadModel = useCallback(async () => {
-    if (!scriptsLoaded || !window.tf || !window.poseDetection) {
-      setErrorMsg("Scripts not loaded yet");
-      return false;
-    }
+    if (!scriptsLoaded || !window.tf || !window.poseDetection) return false;
 
     try {
       await window.tf.setBackend("webgl");
@@ -59,8 +76,7 @@ export default function PunchTargetGame({
         window.poseDetection.SupportedModels.MoveNet,
         { modelType: "SinglePose.Thunder" }
       );
-
-      console.log("✅ MoveNet Thunder Loaded via CDN");
+      console.log("✅ MoveNet Loaded via CDN");
       return true;
     } catch (err) {
       console.error(err);
@@ -83,8 +99,6 @@ export default function PunchTargetGame({
     }
   }, []);
 
-  // ... (checkHit, spawnTarget, startGame, render loop remain the same as previous working version)
-
   const checkHit = useCallback((wx: number, wy: number) => {
     let hitAny = false;
     targetsRef.current = targetsRef.current.filter(t => {
@@ -104,9 +118,9 @@ export default function PunchTargetGame({
       setScore(newScore);
       if (newCombo > maxCombo) setMaxCombo(newCombo);
 
-      send({ type: "SCORE_UPDATE", roomId, userId, score: newScore, combo: newCombo });
+      send({ type: "SCORE_UPDATE", roomId: effectiveRoomId, userId, score: newScore, combo: newCombo });
     }
-  }, [score, combo, maxCombo, send, roomId, userId]);
+  }, [score, combo, maxCombo, send, effectiveRoomId, userId]);
 
   const spawnTarget = useCallback(() => {
     if (!isHost || gameState !== "playing") return;
@@ -120,13 +134,42 @@ export default function PunchTargetGame({
       y: 100 + Math.random() * (rect.height - 250),
       r: 38,
       born: Date.now(),
-      hit: false
+      hit: false,
     };
     targetsRef.current.push(target);
-    send({ type: "TARGET", roomId, target });
-  }, [isHost, gameState, send, roomId]);
+    send({ type: "TARGET", roomId: effectiveRoomId, target });
+  }, [isHost, gameState, send, effectiveRoomId]);
 
-  // Main render + detection loop (same as last working version)
+  // Receive targets
+  useEffect(() => {
+    const handler = (e: any) => {
+      const d = e.detail;
+      if (d.type === "TARGET") {
+        targetsRef.current.push({ ...d.target, born: Date.now() });
+      }
+    };
+    window.addEventListener("game-message", handler);
+    return () => window.removeEventListener("game-message", handler);
+  }, []);
+
+  const startGame = async () => {
+    await loadModel();
+    await startCamera();
+    targetsRef.current = [];
+    setScore(0); setCombo(0); setMaxCombo(0); setTimeLeft(GAME_DURATION);
+    setGameState("countdown");
+
+    let c = 3;
+    const int = setInterval(() => {
+      c--;
+      if (c <= 0) {
+        clearInterval(int);
+        setGameState("playing");
+      }
+    }, 1000);
+  };
+
+  // Main Render + Detection Loop
   useEffect(() => {
     if (gameState !== "playing" || isSpectator) return;
 
@@ -135,7 +178,6 @@ export default function PunchTargetGame({
     if (!canvas || !area) return;
 
     const ctx = canvas.getContext("2d")!;
-
     let lastDetection = 0;
 
     const loop = async (timestamp: number) => {
@@ -145,10 +187,10 @@ export default function PunchTargetGame({
       canvas.height = h;
       ctx.clearRect(0, 0, w, h);
 
-      // Draw Targets
       const now = Date.now();
       targetsRef.current = targetsRef.current.filter(t => now - t.born <= TARGET_LIFETIME);
 
+      // Draw Targets
       targetsRef.current.forEach(t => {
         const x = t.x, y = t.y;
         ctx.save();
@@ -220,7 +262,6 @@ export default function PunchTargetGame({
               }
             });
 
-            // Hit detection
             [9, 10].forEach(i => {
               const kp = keypoints[i];
               if (kp?.score > 0.33) {
@@ -247,19 +288,11 @@ export default function PunchTargetGame({
 
   return (
     <>
-      {/* Load TensorFlow from CDN */}
-      <Script
-        src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"
+      <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" strategy="afterInteractive" />
+      <Script 
+        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3" 
         strategy="afterInteractive"
-        onLoad={() => console.log("✅ tfjs loaded")}
-      />
-      <Script
-        src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"
-        strategy="afterInteractive"
-        onLoad={() => {
-          console.log("✅ pose-detection loaded");
-          setScriptsLoaded(true);
-        }}
+        onLoad={() => setScriptsLoaded(true)}
       />
 
       <div style={{ position: "relative", width: "100%", height: "100vh", background: "#0a0a12", overflow: "hidden" }}>
@@ -270,7 +303,6 @@ export default function PunchTargetGame({
           </div>
         )}
 
-        {/* HUD */}
         {(gameState === "playing" || gameState === "ended") && (
           <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.8)", padding: "12px 40px", borderRadius: "50px", zIndex: 100, fontSize: "1.5rem" }}>
             ⏱ {timeLeft} &nbsp; ⚡ {combo} &nbsp; 🏆 {score}
