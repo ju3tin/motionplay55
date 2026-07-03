@@ -12,98 +12,48 @@
   <video id="video" width="640" height="480" autoplay playsinline></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
-  <!-- Core TF.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4"></script>
+  <!-- 1. TF.js Core + Backend (MUST come first) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js"></script>
 
-  <!-- Pose Detection -->
+  <!-- 2. Pose Detection -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0"></script>
 
-  <!-- Hands (MediaPipe runtime) -->
+  <!-- 3. Hands -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
-    let poseDetector, handDetector;
-
     async function init() {
-      // === Pose Detector (BlazePose or MoveNet) ===
-      const poseModel = poseDetection.SupportedModels.BlazePose; // or MoveNet
-      poseDetector = await poseDetection.createDetector(poseModel, {
-        runtime: 'mediapipe',           // or 'tfjs'
-        modelType: 'full'               // 'lite' or 'full'
-      });
+      // Important: Set backend
+      await tf.setBackend('webgl');
+      await tf.ready();
+      console.log('TF.js backend ready:', tf.getBackend());
 
-      // === Hand Detector ===
-      const handModel = handPoseDetection.SupportedModels.MediaPipeHands;
-      handDetector = await handPoseDetection.createDetector(handModel, {
-        runtime: 'mediapipe',
-        modelType: 'full',              // 'lite' or 'full'
-        maxHands: 2
-      });
-
-      // Start camera
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      await video.play();
-
-      detectLoop();
-    }
-
-    async function detectLoop() {
-      // Draw video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Run both detectors
-      const [poses, hands] = await Promise.all([
-        poseDetector.estimatePoses(video),
-        handDetector.estimateHands(video, { flipHorizontal: false })
-      ]);
-
-      // Draw pose
-      if (poses.length > 0) {
-        drawPose(poses[0]);
-      }
-
-      // Draw hands
-      hands.forEach(hand => drawHand(hand));
-
-      requestAnimationFrame(detectLoop);
-    }
-
-    function drawPose(pose) {
-      ctx.strokeStyle = '#00FF00';
-      ctx.lineWidth = 4;
-      // Draw keypoints
-      pose.keypoints.forEach(kp => {
-        if (kp.score > 0.3) {
-          ctx.beginPath();
-          ctx.arc(kp.x, kp.y, 6, 0, Math.PI * 2);
-          ctx.fillStyle = '#00FF00';
-          ctx.fill();
+      // Pose Detector
+      const poseDetector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.BlazePose, 
+        { 
+          runtime: 'mediapipe',
+          modelType: 'lite'   // start with lite for speed
         }
-      });
-      // You can also connect the keypoints with lines (skeleton)
+      );
+
+      // Hand Detector
+      const handDetector = await handPoseDetection.createDetector(
+        handPoseDetection.SupportedModels.MediaPipeHands,
+        { 
+          runtime: 'mediapipe',
+          modelType: 'lite',
+          maxHands: 2 
+        }
+      );
+
+      console.log("✅ Both detectors loaded successfully!");
+      // ... rest of your code
     }
 
-    function drawHand(hand) {
-      ctx.strokeStyle = '#FF00FF';
-      ctx.lineWidth = 3;
-      hand.keypoints.forEach((kp, i) => {
-        ctx.beginPath();
-        ctx.arc(kp.x, kp.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#FF00FF';
-        ctx.fill();
-      });
-      // Optional: connect finger landmarks
-    }
-
-    // Start everything
-    init().catch(console.error);
+    init().catch(err => console.error("Init error:", err));
   </script>
 </body>
 </html>
