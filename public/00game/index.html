@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>MotionPlay Holistic Tester</title>
+  <title>MotionPlay Full Tracker</title>
+
   <style>
     body {
       font-family: Arial;
@@ -30,7 +31,7 @@
 
 <body>
 
-<h1>MotionPlay Full Skeleton</h1>
+<h1>MotionPlay Skeleton + Hands</h1>
 
 <button onclick="start()">Start Camera</button>
 <button onclick="connect()">Connect Backend</button>
@@ -39,7 +40,7 @@
 
 <div id="output">Waiting...</div>
 
-<!-- MediaPipe -->
+<!-- MediaPipe (STABLE CDN LOAD ORDER) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -47,15 +48,17 @@
 <script>
 let video = document.getElementById("video");
 let socket;
-let userId = "user_" + Math.floor(Math.random()*1000);
 
 let pose, hands, camera;
+
 let latestPose = null;
 let latestHands = null;
 
-// --------------------
-// CAMERA START
-// --------------------
+let userId = "user_" + Math.floor(Math.random() * 1000);
+
+---
+
+# 📡 CAMERA START
 async function start() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   video.srcObject = stream;
@@ -63,9 +66,9 @@ async function start() {
   initMediaPipe();
 }
 
-// --------------------
-// CONNECT BACKEND
-// --------------------
+---
+
+# 🌐 CONNECT BACKEND
 function connect() {
   socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
 
@@ -75,9 +78,9 @@ function connect() {
   };
 }
 
-// --------------------
-// MEDIAPIPE INIT
-// --------------------
+---
+
+# 🧠 MEDIA PIPE INIT (FIXED)
 function initMediaPipe() {
 
   pose = new Pose({
@@ -108,6 +111,7 @@ function initMediaPipe() {
 
   camera = new Camera(video, {
     onFrame: async () => {
+      // IMPORTANT: pose first, hands second (stable)
       await pose.send({ image: video });
       await hands.send({ image: video });
     },
@@ -118,25 +122,25 @@ function initMediaPipe() {
   camera.start();
 }
 
-// --------------------
-// POSE CALLBACK
-// --------------------
+---
+
+# 🧍 POSE CALLBACK
 function onPose(results) {
   latestPose = results.poseLandmarks;
   send();
 }
 
-// --------------------
-// HANDS CALLBACK
-// --------------------
+---
+
+# ✋ HANDS CALLBACK
 function onHands(results) {
   latestHands = results.multiHandLandmarks;
   send();
 }
 
-// --------------------
-// SEND COMBINED DATA
-// --------------------
+---
+
+# 📤 SEND TO BACKEND
 function send() {
   if (!socket || socket.readyState !== 1) return;
   if (!latestPose) return;
