@@ -2,28 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Hands + Pose</title>
+  <title>Hands + Pose Detection</title>
   <style>
-    canvas { border: 1px solid #333; margin: 10px auto; display: block; }
+    canvas { border: 1px solid #333; display: block; margin: 10px auto; }
   </style>
 </head>
 <body>
   <video id="video" width="640" height="480" autoplay playsinline></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
-  <!-- TF.js Core + Backend -->
+  <!-- TF.js Dependencies (order matters) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.22.0/dist/tf-converter.min.js"></script>
 
-  <!-- Pose Detection - try a slightly newer patch if available -->
+  <!-- Pose Detection -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"></script>
 
-  <!-- Hands -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+  <!-- MediaPipe Hands (for hand detector) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 
   <script>
-    let poseDetector, handDetector;
+    let poseDetector = null;
+    let handDetector = null;
+
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -33,31 +36,37 @@
       await tf.ready();
       console.log('✅ TF.js backend ready:', tf.getBackend());
 
-      // Pose Detector
+      // 1. Pose Detector (using tfjs runtime)
       try {
         poseDetector = await poseDetection.createDetector(
           poseDetection.SupportedModels.BlazePose,
-          {
-            runtime: 'tfjs',     // ← Changed to 'tfjs' for better CDN compatibility
+          { 
+            runtime: 'tfjs',
             modelType: 'lite'
           }
         );
-        console.log('✅ Pose detector loaded');
+        console.log('✅ Pose detector (BlazePose) loaded');
       } catch (e) {
-        console.error('Pose detector failed:', e);
+        console.error('Pose failed:', e);
       }
 
-      // Hand Detector
-      handDetector = await handPoseDetection.createDetector(
-        handPoseDetection.SupportedModels.MediaPipeHands,
-        {
-          runtime: 'mediapipe',
-          modelType: 'lite',
-          maxHands: 2
-        }
-      );
-      console.log('✅ Hand detector loaded');
+      // 2. Hand Detector
+      try {
+        handDetector = await handPoseDetection.createDetector(
+          handPoseDetection.SupportedModels.MediaPipeHands,
+          { 
+            runtime: 'mediapipe',
+            modelType: 'lite',
+            maxHands: 2,
+            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
+          }
+        );
+        console.log('✅ Hand detector loaded');
+      } catch (e) {
+        console.error('Hand failed:', e);
+      }
 
+      // Camera
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
       await video.play();
@@ -69,13 +78,13 @@
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       if (poseDetector) {
-        const poses = await poseDetector.estimatePoses(video);
-        if (poses.length > 0) drawPose(poses[0]);
+        const poses = await poseDetector.estimatePoses(video, { flipHorizontal: false });
+        poses.forEach(drawPose);
       }
 
       if (handDetector) {
-        const hands = await handDetector.estimateHands(video);
-        hands.forEach(hand => drawHand(hand));
+        const hands = await handDetector.estimateHands(video, { flipHorizontal: false });
+        hands.forEach(drawHand);
       }
 
       requestAnimationFrame(detectLoop);
@@ -86,7 +95,7 @@
       pose.keypoints.forEach(kp => {
         if (kp.score > 0.3) {
           ctx.beginPath();
-          ctx.arc(kp.x, kp.y, 5, 0, Math.PI * 2);
+          ctx.arc(kp.x, kp.y, 6, 0, Math.PI * 2);
           ctx.fill();
         }
       });
@@ -96,7 +105,7 @@
       ctx.fillStyle = '#ff00ff';
       hand.keypoints.forEach(kp => {
         ctx.beginPath();
-        ctx.arc(kp.x, kp.y, 4, 0, Math.PI * 2);
+        ctx.arc(kp.x, kp.y, 5, 0, Math.PI * 2);
         ctx.fill();
       });
     }
