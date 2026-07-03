@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MotionPlay Tester</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #0b0b0b;
+      color: white;
+      text-align: center;
+    }
+
+    video {
+      width: 300px;
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    #output {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>MotionPlay Pose Tester</h1>
+
+<button onclick="startCamera()">Start Camera</button>
+<button onclick="connect()">Connect Backend</button>
+
+<video id="video" autoplay></video>
+
+<div id="output">Waiting...</div>
+
+<script>
+let video = document.getElementById("video");
+let socket;
+let poseData = null;
+let userId = "user_" + Math.floor(Math.random()*1000);
+
+// --------------------
+// 1. CAMERA
+// --------------------
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+
+  loadMediaPipe();
+}
+
+// --------------------
+// 2. MEDIA PIPE POSE
+// --------------------
+function loadMediaPipe() {
+  const script1 = document.createElement("script");
+  script1.src = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
+  document.body.appendChild(script1);
+
+  const script2 = document.createElement("script");
+  script2.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
+  document.body.appendChild(script2);
+
+  script2.onload = () => {
+    setTimeout(initPose, 1000);
+  };
+}
+
+function initPose() {
+  const pose = new Pose({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+  });
+
+  pose.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  pose.onResults(sendToBackend);
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await pose.send({ image: video });
+    },
+    width: 300,
+    height: 300
+  });
+
+  camera.start();
+}
+
+// --------------------
+// 3. WEBSOCKET
+// --------------------
+function connect() {
+  socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
+
+  socket.onmessage = (event) => {
+    document.getElementById("output").innerText = event.data;
+  };
+}
+
+// --------------------
+// 4. SEND DATA
+// --------------------
+function sendToBackend(results) {
+  if (!socket || socket.readyState !== 1) return;
+
+  const landmarks = results.poseLandmarks;
+
+  if (!landmarks) return;
+
+  const packet = {
+    user_id: userId,
+    timestamp: Date.now(),
+    body: landmarks.map(l => ({
+      x: l.x,
+      y: l.y,
+      z: l.z,
+      visibility: l.visibility
+    })),
+    left_hand: null,
+    right_hand: null
+  };
+
+  socket.send(JSON.stringify(packet));
+}
+</script>
+
+</body>
+</html>
