@@ -2,69 +2,63 @@
 <html>
 <head>
 <title>MotionPlay Full Tracker</title>
-
 <style>
-body { font-family: Arial; background: #0b0b0b; color: white; text-align: center; }
-video { width: 320px; border-radius: 12px; }
-#output { margin-top: 20px; white-space: pre-wrap; }
-button { padding: 10px; margin: 5px; border-radius: 8px; }
+    body { font-family: Arial; background: #0b0b0b; color: white; text-align: center; }
+    video { width: 640px; max-width: 100%; border-radius: 12px; }
+    #output { margin-top: 20px; white-space: pre-wrap; font-size: 12px; }
+    button { padding: 12px 20px; margin: 8px; border-radius: 8px; font-size: 16px; }
+    canvas { position: absolute; top: 0; left: 50%; transform: translateX(-50%); pointer-events: none; }
 </style>
 </head>
-
 <body>
 
-<h1>MotionPlay Skeleton + Hands</h1>
+<h1>MotionPlay Skeleton + Hands (Modern)</h1>
 
-<button onclick="start()">Start Camera</button>
+<button onclick="startCamera()">Start Camera</button>
 <button onclick="connect()">Connect Backend</button>
 
-<video id="video" autoplay></video>
-<div id="output">Waiting...</div>
+<div style="position: relative; display: inline-block;">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+</div>
 
-<!-- MediaPipe Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<div id="output">Waiting for data...</div>
 
-<script>
-// Global variables
+<!-- Modern MediaPipe Tasks -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous"></script>
+
+<script type="module">
+import { FilesetResolver, PoseLandmarker, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
+
 let video = document.getElementById("video");
-let socket;
-let pose, hands, camera;
-let latestPose = null;
-let latestHands = null;
-let userId = "user_" + Math.floor(Math.random() * 1000);
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
 
-// Improved locateFile function
-function createLocateFile(base) {
-    return (file) => {
-        if (file.endsWith('.tflite')) {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/${base}/${file}`;
-        }
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/${base}/${file}`;
-    };
-}
+let socket;
+let poseLandmarker, handLandmarker;
+let userId = "user_" + Math.floor(Math.random() * 1000);
+let isRunning = false;
 
 // Start Camera
-async function start() {
+async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
+        await video.play();
         initMediaPipe();
-        document.getElementById("output").innerText = "Camera started!";
+        document.getElementById("output").innerText = "✅ Camera started";
     } catch (err) {
-        console.error(err);
         document.getElementById("output").innerText = "Camera error: " + err.message;
     }
 }
 
-// Connect Backend
+// Connect to backend
 function connect() {
-    if (socket && socket.readyState === 1) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
         document.getElementById("output").innerText = "Already connected!";
         return;
     }
-    
+
     socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
 
     socket.onopen = () => document.getElementById("output").innerText = "✅ Connected to backend!";
@@ -79,73 +73,104 @@ function connect() {
     socket.onclose = () => document.getElementById("output").innerText = "Connection closed";
 }
 
-// Init MediaPipe
-function initMediaPipe() {
-    pose = new Pose({
-        locateFile: createLocateFile("pose")
+// Initialize MediaPipe (Modern Tasks API)
+async function initMediaPipe() {
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+
+    // Pose
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
+        runningMode: "VIDEO",
+        numPoses: 1
     });
 
-    hands = new Hands({
-        locateFile: createLocateFile("hands")
+    // Hands
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+        runningMode: "VIDEO",
+        numHands: 2
     });
 
-    pose.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-
-    hands.setOptions({
-        maxNumHands: 2,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-
-    pose.onResults(onPose);
-    hands.onResults(onHands);
-
-    camera = new Camera(video, {
-        onFrame: async () => {
-            if (pose && hands) {
-                await pose.send({ image: video });
-                await hands.send({ image: video });
-            }
-        },
-        width: 640,
-        height: 480
-    });
-
-    camera.start();
+    isRunning = true;
+    processFrame();
 }
 
-function onPose(results) {
-    latestPose = results.poseLandmarks;
-    send();
+// Main processing loop
+async function processFrame() {
+    if (!isRunning) return;
+
+    const now = performance.now();
+
+    // Run Pose
+    let poseResult = poseLandmarker.detectForVideo(video, now);
+    // Run Hands
+    let handResult = handLandmarker.detectForVideo(video, now);
+
+    // Draw landmarks
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawLandmarks(poseResult, handResult);
+
+    // Send data
+    sendData(poseResult, handResult);
+
+    requestAnimationFrame(processFrame);
 }
 
-function onHands(results) {
-    latestHands = results.multiHandLandmarks;
-    send();
+function drawLandmarks(poseResult, handResult) {
+    ctx.strokeStyle = "#00ff00";
+    ctx.fillStyle = "#00ff00";
+
+    // Draw Pose (simplified)
+    if (poseResult.landmarks && poseResult.landmarks.length > 0) {
+        poseResult.landmarks[0].forEach((landmark, i) => {
+            const x = landmark.x * canvas.width;
+            const y = landmark.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
+
+    // Draw Hands
+    if (handResult.landmarks) {
+        handResult.landmarks.forEach(hand => {
+            hand.forEach((landmark) => {
+                const x = landmark.x * canvas.width;
+                const y = landmark.y * canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        });
+    }
 }
 
-function send() {
-    if (!socket || socket.readyState !== 1 || !latestPose) return;
+function sendData(poseResult, handResult) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-    let left = null, right = null;
-    if (latestHands && latestHands.length > 0) {
-        left = latestHands[0];
-        right = latestHands[1];
+    let poseLandmarks = [];
+    if (poseResult.landmarks && poseResult.landmarks.length > 0) {
+        poseLandmarks = poseResult.landmarks[0].map(l => ({
+            x: l.x, y: l.y, z: l.z || 0, visibility: l.visibility || 1
+        }));
+    }
+
+    let leftHand = null, rightHand = null;
+    if (handResult.landmarks && handResult.landmarks.length > 0) {
+        leftHand = handResult.landmarks[0].map(l => ({ x: l.x, y: l.y, z: l.z || 0 }));
+        if (handResult.landmarks.length > 1) {
+            rightHand = handResult.landmarks[1].map(l => ({ x: l.x, y: l.y, z: l.z || 0 }));
+        }
     }
 
     const packet = {
         user_id: userId,
         timestamp: Date.now(),
-        body: latestPose.map(l => ({
-            x: l.x, y: l.y, z: l.z, visibility: l.visibility || 0
-        })),
-        left_hand: left ? left.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
-        right_hand: right ? right.map(l => ({ x: l.x, y: l.y, z: l.z })) : null
+        body: poseLandmarks,
+        left_hand: leftHand,
+        right_hand: rightHand
     };
 
     socket.send(JSON.stringify(packet));
