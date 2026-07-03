@@ -1,4 +1,4 @@
-import styles from "../../styles/Home.module.css";
+import styles from "@/styles/Home.module.css";
 import { useEffect, useRef, useState } from 'react';
 import { createDetector, SupportedModels } from "@tensorflow-models/hand-pose-detection";
 import '@tensorflow/tfjs-backend-webgl';
