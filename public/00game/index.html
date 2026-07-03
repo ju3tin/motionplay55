@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>MotionPlay Tester</title>
+  <title>MotionPlay Holistic Tester</title>
   <style>
     body {
       font-family: Arial;
@@ -17,7 +17,6 @@
 
     #output {
       margin-top: 20px;
-      font-size: 18px;
       white-space: pre-wrap;
     }
 
@@ -31,54 +30,64 @@
 
 <body>
 
-<h1>MotionPlay Pose Tester</h1>
+<h1>MotionPlay Full Skeleton</h1>
 
-<button onclick="start()">Start</button>
+<button onclick="start()">Start Camera</button>
 <button onclick="connect()">Connect Backend</button>
 
 <video id="video" autoplay></video>
 
 <div id="output">Waiting...</div>
 
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
 <script>
 let video = document.getElementById("video");
 let socket;
-let userId = "user_" + Math.floor(Math.random() * 1000);
+let userId = "user_" + Math.floor(Math.random()*1000);
+
+let pose, hands, camera;
+let latestPose = null;
+let latestHands = null;
 
 // --------------------
-// START CAMERA + MEDIA PIPE
+// CAMERA START
 // --------------------
 async function start() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   video.srcObject = stream;
 
-  loadMediaPipe();
+  initMediaPipe();
 }
 
 // --------------------
-// LOAD MEDIA PIPE (SAFE)
+// CONNECT BACKEND
 // --------------------
-function loadMediaPipe() {
-  const poseScript = document.createElement("script");
-  poseScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
-  poseScript.onload = loadCameraUtils;
-  document.body.appendChild(poseScript);
-}
+function connect() {
+  socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
 
-function loadCameraUtils() {
-  const camScript = document.createElement("script");
-  camScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
-  camScript.onload = initPose;
-  document.body.appendChild(camScript);
+  socket.onmessage = (e) => {
+    document.getElementById("output").innerText =
+      JSON.stringify(JSON.parse(e.data), null, 2);
+  };
 }
 
 // --------------------
-// INIT POSE
+// MEDIAPIPE INIT
 // --------------------
-function initPose() {
-  const pose = new Pose({
+function initMediaPipe() {
+
+  pose = new Pose({
     locateFile: (file) =>
       `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+  });
+
+  hands = new Hands({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
   });
 
   pose.setOptions({
@@ -88,11 +97,19 @@ function initPose() {
     minTrackingConfidence: 0.5
   });
 
-  pose.onResults(sendToBackend);
+  hands.setOptions({
+    maxNumHands: 2,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
 
-  const camera = new Camera(video, {
+  pose.onResults(onPose);
+  hands.onResults(onHands);
+
+  camera = new Camera(video, {
     onFrame: async () => {
       await pose.send({ image: video });
+      await hands.send({ image: video });
     },
     width: 640,
     height: 480
@@ -102,45 +119,49 @@ function initPose() {
 }
 
 // --------------------
-// WEBSOCKET CONNECT
+// POSE CALLBACK
 // --------------------
-function connect() {
-  socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
-
-  socket.onopen = () => {
-    console.log("Connected");
-  };
-
-  socket.onmessage = (event) => {
-    document.getElementById("output").innerText =
-      JSON.stringify(JSON.parse(event.data), null, 2);
-  };
-
-  socket.onerror = (e) => {
-    console.log("WebSocket error", e);
-  };
+function onPose(results) {
+  latestPose = results.poseLandmarks;
+  send();
 }
 
 // --------------------
-// SEND DATA
+// HANDS CALLBACK
 // --------------------
-function sendToBackend(results) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+function onHands(results) {
+  latestHands = results.multiHandLandmarks;
+  send();
+}
 
-  const landmarks = results.poseLandmarks;
-  if (!landmarks) return;
+// --------------------
+// SEND COMBINED DATA
+// --------------------
+function send() {
+  if (!socket || socket.readyState !== 1) return;
+  if (!latestPose) return;
+
+  let left = null;
+  let right = null;
+
+  if (latestHands && latestHands.length > 0) {
+    left = latestHands[0] || null;
+    right = latestHands[1] || null;
+  }
 
   const packet = {
     user_id: userId,
     timestamp: Date.now(),
-    body: landmarks.map(l => ({
+
+    body: latestPose.map(l => ({
       x: l.x,
       y: l.y,
       z: l.z,
       visibility: l.visibility
     })),
-    left_hand: null,
-    right_hand: null
+
+    left_hand: left ? left.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
+    right_hand: right ? right.map(l => ({ x: l.x, y: l.y, z: l.z })) : null
   };
 
   socket.send(JSON.stringify(packet));
