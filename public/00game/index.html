@@ -1,92 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>MotionPlay Full Tracker</title>
+<title>MotionPlay Tracker</title>
 <style>
-    body { font-family: Arial; background: #0b0b0b; color: white; text-align: center; }
-    video { width: 640px; max-width: 100%; border-radius: 12px; }
-    #output { margin-top: 20px; white-space: pre-wrap; font-size: 12px; }
-    button { padding: 12px 20px; margin: 8px; border-radius: 8px; font-size: 16px; }
-    canvas { position: absolute; top: 0; left: 50%; transform: translateX(-50%); pointer-events: none; }
+    body { font-family: Arial; background: #0b0b0b; color: white; text-align: center; margin: 0; padding: 20px; }
+    video { width: 640px; border-radius: 12px; background: #000; }
+    button { padding: 12px 24px; margin: 10px; font-size: 16px; border-radius: 8px; cursor: pointer; }
+    #status { margin: 15px; font-size: 18px; min-height: 28px; }
+    #output { margin-top: 20px; background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: left; max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; }
 </style>
 </head>
 <body>
 
-<h1>MotionPlay Skeleton + Hands (Modern)</h1>
+<h1>MotionPlay — Pose + Hands Tracker</h1>
 
-<button onclick="startCamera()">Start Camera</button>
-<button onclick="connect()">Connect Backend</button>
+<button onclick="startCamera()">📹 Start Camera</button>
+<button onclick="connectWS()">🔗 Connect Backend</button>
+<button onclick="stopAll()">⏹️ Stop</button>
 
-<div style="position: relative; display: inline-block;">
+<div style="position: relative; display: inline-block; margin: 20px;">
     <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
 </div>
 
+<div id="status">Ready</div>
 <div id="output">Waiting for data...</div>
 
-<!-- Modern MediaPipe Tasks -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs" type="module"></script>
 
 <script type="module">
-import { FilesetResolver, PoseLandmarker, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
+import { FilesetResolver, PoseLandmarker, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
 
 let video = document.getElementById("video");
-let canvas = document.getElementById("canvas");
-let ctx = canvas.getContext("2d");
-
-let socket;
-let poseLandmarker, handLandmarker;
-let userId = "user_" + Math.floor(Math.random() * 1000);
+let socket = null;
+let poseLandmarker = null;
+let handLandmarker = null;
 let isRunning = false;
+let userId = "user_" + Math.floor(Math.random() * 10000);
 
-// Start Camera
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
-        await video.play();
+        document.getElementById("status").innerHTML = "✅ Camera started";
         initMediaPipe();
-        document.getElementById("output").innerText = "✅ Camera started";
-    } catch (err) {
-        document.getElementById("output").innerText = "Camera error: " + err.message;
+    } catch (e) {
+        document.getElementById("status").innerHTML = "❌ Camera failed: " + e.message;
     }
 }
 
-// Connect to backend
-function connect() {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        document.getElementById("output").innerText = "Already connected!";
-        return;
-    }
-
-    socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
-
-    socket.onopen = () => document.getElementById("output").innerText = "✅ Connected to backend!";
-    socket.onmessage = (e) => {
-        try {
-            document.getElementById("output").innerText = JSON.stringify(JSON.parse(e.data), null, 2);
-        } catch {
-            document.getElementById("output").innerText = e.data;
-        }
-    };
-    socket.onerror = () => document.getElementById("output").innerText = "❌ WebSocket error";
-    socket.onclose = () => document.getElementById("output").innerText = "Connection closed";
-}
-
-// Initialize MediaPipe (Modern Tasks API)
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
     );
 
-    // Pose
     poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
         runningMode: "VIDEO",
         numPoses: 1
     });
 
-    // Hands
     handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
         runningMode: "VIDEO",
@@ -94,71 +66,33 @@ async function initMediaPipe() {
     });
 
     isRunning = true;
-    processFrame();
+    processVideo();
 }
 
-// Main processing loop
-async function processFrame() {
+async function processVideo() {
     if (!isRunning) return;
 
     const now = performance.now();
+    const poseResult = poseLandmarker.detectForVideo(video, now);
+    const handResult = handLandmarker.detectForVideo(video, now);
 
-    // Run Pose
-    let poseResult = poseLandmarker.detectForVideo(video, now);
-    // Run Hands
-    let handResult = handLandmarker.detectForVideo(video, now);
+    sendToServer(poseResult, handResult);
 
-    // Draw landmarks
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawLandmarks(poseResult, handResult);
-
-    // Send data
-    sendData(poseResult, handResult);
-
-    requestAnimationFrame(processFrame);
+    requestAnimationFrame(processVideo);
 }
 
-function drawLandmarks(poseResult, handResult) {
-    ctx.strokeStyle = "#00ff00";
-    ctx.fillStyle = "#00ff00";
-
-    // Draw Pose (simplified)
-    if (poseResult.landmarks && poseResult.landmarks.length > 0) {
-        poseResult.landmarks[0].forEach((landmark, i) => {
-            const x = landmark.x * canvas.width;
-            const y = landmark.y * canvas.height;
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, 2 * Math.PI);
-            ctx.fill();
-        });
-    }
-
-    // Draw Hands
-    if (handResult.landmarks) {
-        handResult.landmarks.forEach(hand => {
-            hand.forEach((landmark) => {
-                const x = landmark.x * canvas.width;
-                const y = landmark.y * canvas.height;
-                ctx.beginPath();
-                ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                ctx.fill();
-            });
-        });
-    }
-}
-
-function sendData(poseResult, handResult) {
+function sendToServer(poseResult, handResult) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-    let poseLandmarks = [];
-    if (poseResult.landmarks && poseResult.landmarks.length > 0) {
-        poseLandmarks = poseResult.landmarks[0].map(l => ({
+    let body = [];
+    if (poseResult.landmarks?.length > 0) {
+        body = poseResult.landmarks[0].map(l => ({
             x: l.x, y: l.y, z: l.z || 0, visibility: l.visibility || 1
         }));
     }
 
     let leftHand = null, rightHand = null;
-    if (handResult.landmarks && handResult.landmarks.length > 0) {
+    if (handResult.landmarks?.length > 0) {
         leftHand = handResult.landmarks[0].map(l => ({ x: l.x, y: l.y, z: l.z || 0 }));
         if (handResult.landmarks.length > 1) {
             rightHand = handResult.landmarks[1].map(l => ({ x: l.x, y: l.y, z: l.z || 0 }));
@@ -168,12 +102,38 @@ function sendData(poseResult, handResult) {
     const packet = {
         user_id: userId,
         timestamp: Date.now(),
-        body: poseLandmarks,
+        body: body,
         left_hand: leftHand,
         right_hand: rightHand
     };
 
     socket.send(JSON.stringify(packet));
+}
+
+function connectWS() {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        document.getElementById("status").innerHTML = "Already connected";
+        return;
+    }
+
+    socket = new WebSocket("wss://motionplayapi.onrender.com/pose");   // Change to wss:// if deployed
+
+    socket.onopen = () => {
+        document.getElementById("status").innerHTML = "✅ Connected to Python Backend";
+    };
+
+    socket.onmessage = (event) => {
+        document.getElementById("output").innerText = event.data;
+    };
+
+    socket.onerror = () => document.getElementById("status").innerHTML = "❌ WebSocket Error";
+    socket.onclose = () => document.getElementById("status").innerHTML = "Connection closed";
+}
+
+function stopAll() {
+    isRunning = false;
+    if (socket) socket.close();
+    document.getElementById("status").innerHTML = "Stopped";
 }
 </script>
 
