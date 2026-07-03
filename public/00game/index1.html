@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hands + Pose Detection</title>
+  <style>
+    canvas { border: 1px solid #333; display: block; margin: 10px auto; }
+    video { display: none; }
+  </style>
+</head>
+<body>
+  <video id="video" width="640" height="480" autoplay playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+
+  <!-- Core TF.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4"></script>
+
+  <!-- Pose Detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0"></script>
+
+  <!-- Hands (MediaPipe runtime) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let poseDetector, handDetector;
+
+    async function init() {
+      // === Pose Detector (BlazePose or MoveNet) ===
+      const poseModel = poseDetection.SupportedModels.BlazePose; // or MoveNet
+      poseDetector = await poseDetection.createDetector(poseModel, {
+        runtime: 'mediapipe',           // or 'tfjs'
+        modelType: 'full'               // 'lite' or 'full'
+      });
+
+      // === Hand Detector ===
+      const handModel = handPoseDetection.SupportedModels.MediaPipeHands;
+      handDetector = await handPoseDetection.createDetector(handModel, {
+        runtime: 'mediapipe',
+        modelType: 'full',              // 'lite' or 'full'
+        maxHands: 2
+      });
+
+      // Start camera
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await video.play();
+
+      detectLoop();
+    }
+
+    async function detectLoop() {
+      // Draw video frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Run both detectors
+      const [poses, hands] = await Promise.all([
+        poseDetector.estimatePoses(video),
+        handDetector.estimateHands(video, { flipHorizontal: false })
+      ]);
+
+      // Draw pose
+      if (poses.length > 0) {
+        drawPose(poses[0]);
+      }
+
+      // Draw hands
+      hands.forEach(hand => drawHand(hand));
+
+      requestAnimationFrame(detectLoop);
+    }
+
+    function drawPose(pose) {
+      ctx.strokeStyle = '#00FF00';
+      ctx.lineWidth = 4;
+      // Draw keypoints
+      pose.keypoints.forEach(kp => {
+        if (kp.score > 0.3) {
+          ctx.beginPath();
+          ctx.arc(kp.x, kp.y, 6, 0, Math.PI * 2);
+          ctx.fillStyle = '#00FF00';
+          ctx.fill();
+        }
+      });
+      // You can also connect the keypoints with lines (skeleton)
+    }
+
+    function drawHand(hand) {
+      ctx.strokeStyle = '#FF00FF';
+      ctx.lineWidth = 3;
+      hand.keypoints.forEach((kp, i) => {
+        ctx.beginPath();
+        ctx.arc(kp.x, kp.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#FF00FF';
+        ctx.fill();
+      });
+      // Optional: connect finger landmarks
+    }
+
+    // Start everything
+    init().catch(console.error);
+  </script>
+</body>
+</html>
