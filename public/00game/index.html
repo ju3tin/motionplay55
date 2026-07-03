@@ -14,9 +14,9 @@
 
 <h1>MotionPlay — Pose + Hands Tracker</h1>
 
-<button onclick="startCamera()">📹 Start Camera</button>
-<button onclick="connectWS()">🔗 Connect Backend</button>
-<button onclick="stopAll()">⏹️ Stop</button>
+<button id="startBtn">📹 Start Camera</button>
+<button id="connectBtn">🔗 Connect Backend</button>
+<button id="stopBtn">⏹️ Stop</button>
 
 <div style="position: relative; display: inline-block; margin: 20px;">
     <video id="video" autoplay playsinline></video>
@@ -37,36 +37,48 @@ let handLandmarker = null;
 let isRunning = false;
 let userId = "user_" + Math.floor(Math.random() * 10000);
 
+const statusEl = document.getElementById("status");
+const outputEl = document.getElementById("output");
+
+// Button listeners
+document.getElementById("startBtn").addEventListener("click", startCamera);
+document.getElementById("connectBtn").addEventListener("click", connectWS);
+document.getElementById("stopBtn").addEventListener("click", stopAll);
+
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
-        document.getElementById("status").innerHTML = "✅ Camera started";
+        statusEl.innerHTML = "✅ Camera started";
         initMediaPipe();
     } catch (e) {
-        document.getElementById("status").innerHTML = "❌ Camera failed: " + e.message;
+        statusEl.innerHTML = "❌ Camera failed: " + e.message;
     }
 }
 
 async function initMediaPipe() {
-    const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
+    try {
+        const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        );
 
-    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
-        runningMode: "VIDEO",
-        numPoses: 1
-    });
+        poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
+            runningMode: "VIDEO",
+            numPoses: 1
+        });
 
-    handLandmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
-        runningMode: "VIDEO",
-        numHands: 2
-    });
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+            runningMode: "VIDEO",
+            numHands: 2
+        });
 
-    isRunning = true;
-    processVideo();
+        isRunning = true;
+        processVideo();
+    } catch (e) {
+        statusEl.innerHTML = "❌ MediaPipe init failed: " + e.message;
+    }
 }
 
 async function processVideo() {
@@ -112,28 +124,29 @@ function sendToServer(poseResult, handResult) {
 
 function connectWS() {
     if (socket && socket.readyState === WebSocket.OPEN) {
-        document.getElementById("status").innerHTML = "Already connected";
+        statusEl.innerHTML = "Already connected";
         return;
     }
 
-    socket = new WebSocket("wss://motionplayapi.onrender.com/pose");   // Change to wss:// if deployed
+    // Change to wss:// if using HTTPS
+    socket = new WebSocket("wss://motionplayapi.onrender.com/pose");
 
     socket.onopen = () => {
-        document.getElementById("status").innerHTML = "✅ Connected to Python Backend";
+        statusEl.innerHTML = "✅ Connected to Python Backend";
     };
 
     socket.onmessage = (event) => {
-        document.getElementById("output").innerText = event.data;
+        outputEl.innerText = event.data;
     };
 
-    socket.onerror = () => document.getElementById("status").innerHTML = "❌ WebSocket Error";
-    socket.onclose = () => document.getElementById("status").innerHTML = "Connection closed";
+    socket.onerror = () => statusEl.innerHTML = "❌ WebSocket Error";
+    socket.onclose = () => statusEl.innerHTML = "Connection closed";
 }
 
 function stopAll() {
     isRunning = false;
     if (socket) socket.close();
-    document.getElementById("status").innerHTML = "Stopped";
+    statusEl.innerHTML = "Stopped";
 }
 </script>
 
