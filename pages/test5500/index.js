@@ -1,11 +1,12 @@
 import styles from "@/styles/Home.module.css";
 import { useEffect, useRef, useState } from 'react';
-import { createDetector, SupportedModels } from "@tensorflow-models/hand-pose-detection";
+import { createDetector as createHandDetector, SupportedModels as HandModels } from "@tensorflow-models/hand-pose-detection";
+import { createDetector as createPoseDetector, SupportedModels as PoseModels } from "@tensorflow-models/pose-detection";
 import '@tensorflow/tfjs-backend-webgl';
+import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
 import { drawHands } from "@/lib/utils3";
 import Link from "next/link";
 import { useAnimationFrame } from "@/lib/hooks/useAnimationFrame";
-import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
 
 tfjsWasm.setWasmPaths(
     `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm`);
