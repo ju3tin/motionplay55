@@ -6,22 +6,21 @@ import Link from "next/link";
 import { useAnimationFrame } from "@/lib/hooks/useAnimationFrame";
 
 export default function CombinedPoseDetection() {
-    const handDetectorRef = useRef<any>(null);
-    const poseDetectorRef = useRef<any>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const keypointsRef = useRef<any[]>([]);
+    const handDetectorRef = useRef(null);
+    const poseDetectorRef = useRef(null);
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const keypointsRef = useRef([]);
 
     const [ready, setReady] = useState(false);
     const [status, setStatus] = useState("Loading models...");
 
-    // Dynamic import + setup (both detectors)
+    // Dynamic import + setup
     useEffect(() => {
         let cancelled = false;
 
         (async () => {
             try {
-                // Core TF.js
                 const tf = await import("@tensorflow/tfjs");
                 await import("@tensorflow/tfjs-backend-webgl");
                 await tf.setBackend("webgl");
@@ -31,7 +30,6 @@ export default function CombinedPoseDetection() {
 
                 setStatus("Loading MoveNet...");
                 
-                // Pose Detector (MoveNet)
                 const pd = await import("@tensorflow-models/pose-detection");
                 poseDetectorRef.current = await pd.createDetector(
                     pd.SupportedModels.MoveNet,
@@ -42,7 +40,6 @@ export default function CombinedPoseDetection() {
 
                 setStatus("Loading Hand Detector...");
                 
-                // Hand Detector
                 handDetectorRef.current = await createHandDetector(
                     HandModels.MediaPipeHands,
                     {
@@ -62,14 +59,14 @@ export default function CombinedPoseDetection() {
                     return;
                 }
 
-                const video = videoRef.current!;
+                const video = videoRef.current;
                 video.srcObject = stream;
-                await new Promise<void>(res => { video.onloadedmetadata = () => res(); });
+                await new Promise(res => { video.onloadedmetadata = () => res(); });
                 await video.play();
 
                 setReady(true);
                 setStatus("");
-            } catch (e: any) {
+            } catch (e) {
                 if (!cancelled) setStatus("Error: " + e.message);
             }
         })();
@@ -77,7 +74,7 @@ export default function CombinedPoseDetection() {
         return () => { cancelled = true; };
     }, []);
 
-    // Separate pose estimation loop (non-blocking)
+    // Background pose estimation
     useEffect(() => {
         if (!ready) return;
         let active = true;
@@ -93,7 +90,7 @@ export default function CombinedPoseDetection() {
                         }
                     } catch (_) {}
                 }
-                await new Promise(r => setTimeout(r, 66)); // ~15fps for pose
+                await new Promise(r => setTimeout(r, 66));
             }
         };
         loop();
@@ -101,12 +98,12 @@ export default function CombinedPoseDetection() {
         return () => { active = false; };
     }, [ready]);
 
-    // Main render + hand detection loop
+    // Main render loop (hands + drawing)
     useAnimationFrame(async () => {
         if (!ready || !canvasRef.current || !videoRef.current) return;
 
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d')!;
+        const ctx = canvas.getContext('2d');
         const video = videoRef.current;
 
         // Draw mirrored video
@@ -115,7 +112,7 @@ export default function CombinedPoseDetection() {
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         ctx.restore();
 
-        // Draw Hands
+        // Hands
         if (handDetectorRef.current) {
             try {
                 const hands = await handDetectorRef.current.estimateHands(video, { flipHorizontal: true });
@@ -123,10 +120,10 @@ export default function CombinedPoseDetection() {
             } catch (_) {}
         }
 
-        // Draw Pose Keypoints (from background loop)
+        // Pose keypoints
         const kps = keypointsRef.current;
         if (kps.length > 0) {
-            drawKeypoints(kps, ctx, canvas);
+            drawKeypoints(kps, ctx);
         }
     }, ready);
 
@@ -159,12 +156,10 @@ export default function CombinedPoseDetection() {
     );
 }
 
-// Simple keypoint drawer
-function drawKeypoints(keypoints: any[], ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+function drawKeypoints(keypoints, ctx) {
     ctx.strokeStyle = "#00ffcc";
     ctx.lineWidth = 4;
 
-    // Example connections (expand as needed)
     const connections = [[0,1],[0,2],[1,3],[2,4],[5,6],[5,7],[6,8],[7,9],[8,10],[11,12],[11,13],[12,14],[13,15],[14,16]];
     
     connections.forEach(([i, j]) => {
@@ -178,7 +173,6 @@ function drawKeypoints(keypoints: any[], ctx: CanvasRenderingContext2D, canvas: 
         }
     });
 
-    // Joints
     ctx.fillStyle = "#fff";
     keypoints.forEach(kp => {
         if (kp.score > 0.3) {
