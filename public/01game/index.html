@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pose + Hands Detection (Server)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #111; color: white; text-align: center; }
+    canvas { border: 2px solid #0f0; border-radius: 12px; max-width: 100%; margin: 10px auto; display: block; }
+    #status { margin: 10px; color: #0f0; }
+  </style>
+</head>
+<body>
+  <h1>Pose + Hands Detection</h1>
+  <p id="status">Connecting to server...</p>
+
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+
+  <script>
+    const API_URL = "https://poseapi-uboi.onrender.com";  // ← CHANGE THIS
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+
+    let lastSent = 0;
+
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 640 }, height: { ideal: 480 } } 
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+
+        statusEl.textContent = "Running...";
+        loop();
+      } catch (err) {
+        statusEl.textContent = "Camera error: " + err.message;
+      }
+    }
+
+    async function loop() {
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      // Send frame to server (max ~12-15 fps)
+      if (Date.now() - lastSent > 70) {
+        lastSent = Date.now();
+        sendFrame();
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    async function sendFrame() {
+      try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.65));
+        const formData = new FormData();
+        formData.append('file', blob, 'frame.jpg');
+
+        const res = await fetch(`${API_URL}/detect`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+          console.error(data.error);
+          return;
+        }
+
+        drawResults(data);
+      } catch (e) {
+        console.error("Send error", e);
+      }
+    }
+
+    function drawResults(data) {
+      // Draw hands
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 3;
+      data.hands.forEach(hand => {
+        hand.landmarks.forEach((lm, i) => {
+          const x = canvas.width - (lm.x * canvas.width);  // mirror
+          const y = lm.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fillStyle = '#00ff00';
+          ctx.fill();
+        });
+      });
+
+      // Draw pose
+      ctx.strokeStyle = '#ff00ff';
+      ctx.lineWidth = 4;
+      const kps = data.pose;
+      if (kps.length > 0) {
+        // Draw some keypoints
+        kps.forEach((kp, i) => {
+          if (kp.visibility > 0.3) {
+            const x = canvas.width - (kp.x * canvas.width);
+            const y = kp.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff00ff';
+            ctx.fill();
+          }
+        });
+      }
+    }
+
+    // Start
+    start();
+  </script>
+</body>
+</html>
