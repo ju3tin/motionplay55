@@ -3,22 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hands + Full Body</title>
+  <title>MediaPipe Holistic</title>
   <style>
-    body { margin:0; padding:10px; background:#111; color:white; font-family:Arial; text-align:center; }
-    canvas { border:3px solid #0ff; border-radius:12px; max-width:100%; display:block; margin:15px auto; background:#000; }
-    #status { color:#0f0; margin:10px; font-size:1.1em; }
+    body { margin:0; padding:10px; background:#111; color:white; text-align:center; font-family:Arial; }
+    canvas { border:3px solid #0ff; border-radius:12px; max-width:100%; margin:15px auto; display:block; }
   </style>
 </head>
 <body>
-  <h1>Hands + Full Body Skeleton</h1>
+  <h1>MediaPipe Holistic (Face + Hands + Pose)</h1>
   <p id="status">Starting...</p>
 
   <video id="video" autoplay playsinline style="display:none;"></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
   <script>
-    const API_URL = "https://poseapi-uboi.onrender.com";  // ← YOUR RENDER URL
+    const API_URL = "https://poseapi-uboi.onrender.com";
 
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
@@ -27,134 +26,110 @@
 
     let lastSent = 0;
 
-    const POSE_CONNECTIONS = [
-      [0,1],[0,2],[1,3],[2,4], [5,6],[5,7],[6,8],[7,9],[8,10],
-      [11,12],[11,13],[12,14],[13,15],[14,16],[5,11],[6,12]
-    ];
-
     async function start() {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: { ideal: 640 }, height: { ideal: 480 }} 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
       await video.play();
-
       canvas.width = 640;
       canvas.height = 480;
-
-      statusEl.textContent = "✅ Connected - Move in front of camera";
+      statusEl.textContent = "Holistic Running";
       loop();
     }
 
     function loop() {
-      // Draw mirrored video
       ctx.save();
       ctx.scale(-1, 1);
       ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
 
-      if (Date.now() - lastSent > 70) {
+      if (Date.now() - lastSent > 80) {
         lastSent = Date.now();
         sendFrame();
       }
-
       requestAnimationFrame(loop);
     }
 
     async function sendFrame() {
-      try {
-        const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.65));
-        const form = new FormData();
-        form.append("file", blob);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.6));
+      const form = new FormData();
+      form.append('file', blob);
 
-        const res = await fetch(`${API_URL}/detect`, { method: "POST", body: form });
+      try {
+        const res = await fetch(`${API_URL}/detect`, { method: 'POST', body: form });
         const data = await res.json();
 
-        if (data.error) {
-          console.log(data.error);
-          return;
-        }
-
-        // Clear previous drawings (except video)
+        // Redraw video
         ctx.save();
         ctx.scale(-1, 1);
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         ctx.restore();
 
+        drawPose(data.pose);
         drawHands(data.hands);
-        drawFullBody(data.pose);
+        drawFace(data.face);
+      } catch(e) {}
+    }
 
-      } catch (e) { console.error(e); }
+    function drawPose(pose) {
+      if (!pose.length) return;
+      ctx.strokeStyle = "#ff00ff";
+      ctx.lineWidth = 4;
+      ctx.fillStyle = "#ff00ff";
+
+      // Connections (same as before)
+      const connections = [[0,1],[0,2],[1,3],[2,4],[5,6],[5,7],[6,8],[7,9],[8,10],[11,12],[11,13],[12,14],[13,15],[14,16],[5,11],[6,12]];
+      connections.forEach(([a,b]) => {
+        const p1 = pose[a], p2 = pose[b];
+        if (p1 && p2 && p1.visibility > 0.3 && p2.visibility > 0.3) {
+          const x1 = canvas.width - p1.x*canvas.width;
+          const y1 = p1.y*canvas.height;
+          const x2 = canvas.width - p2.x*canvas.width;
+          const y2 = p2.y*canvas.height;
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        }
+      });
+
+      pose.forEach(kp => {
+        if (kp.visibility > 0.3) {
+          const x = canvas.width - kp.x * canvas.width;
+          const y = kp.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, Math.PI*2);
+          ctx.fill();
+        }
+      });
     }
 
     function drawHands(hands) {
       ctx.strokeStyle = "#00ff00";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 3;
       ctx.fillStyle = "#00ff00";
 
       hands.forEach(hand => {
-        const pts = hand.landmarks;
-        // Draw connections for fingers
-        for (let i = 0; i < pts.length - 1; i++) {
-          const x1 = canvas.width - pts[i].x * canvas.width;
-          const y1 = pts[i].y * canvas.height;
-          const x2 = canvas.width - pts[i+1].x * canvas.width;
-          const y2 = pts[i+1].y * canvas.height;
-
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
-        }
-
-        // Draw landmarks
-        pts.forEach(p => {
+        hand.landmarks.forEach((p,i) => {
           const x = canvas.width - p.x * canvas.width;
           const y = p.y * canvas.height;
           ctx.beginPath();
-          ctx.arc(x, y, 6, 0, Math.PI*2);
+          ctx.arc(x, y, 5, 0, Math.PI*2);
           ctx.fill();
         });
       });
     }
 
-    function drawFullBody(pose) {
-      if (!pose || pose.length < 17) return;
-
-      ctx.strokeStyle = "#ff00ff";
-      ctx.lineWidth = 5;
-      ctx.fillStyle = "#ff00ff";
-
-      // Bones
-      POSE_CONNECTIONS.forEach(([a, b]) => {
-        const p1 = pose[a];
-        const p2 = pose[b];
-        if (p1 && p2 && p1.visibility > 0.4 && p2.visibility > 0.4) {
-          const x1 = canvas.width - p1.x * canvas.width;
-          const y1 = p1.y * canvas.height;
-          const x2 = canvas.width - p2.x * canvas.width;
-          const y2 = p2.y * canvas.height;
-
+    function drawFace(face) {
+      ctx.fillStyle = "#ffff00";
+      face.forEach((p,i) => {
+        if (i % 5 === 0) {  // draw fewer points for performance
+          const x = canvas.width - p.x * canvas.width;
+          const y = p.y * canvas.height;
           ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
-        }
-      });
-
-      // Joints
-      pose.forEach((kp, i) => {
-        if (kp.visibility > 0.4) {
-          const x = canvas.width - kp.x * canvas.width;
-          const y = kp.y * canvas.height;
-          ctx.beginPath();
-          ctx.arc(x, y, 7, 0, Math.PI*2);
+          ctx.arc(x, y, 2, 0, Math.PI*2);
           ctx.fill();
         }
       });
     }
 
-    start().catch(err => statusEl.textContent = "Error: " + err.message);
+    start();
   </script>
 </body>
 </html>
