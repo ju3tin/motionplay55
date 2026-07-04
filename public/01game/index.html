@@ -3,22 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pose + Hands Detection (Server)</title>
+  <title>Hands + Full Body Detection</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #111; color: white; text-align: center; }
-    canvas { border: 2px solid #0f0; border-radius: 12px; max-width: 100%; margin: 10px auto; display: block; }
-    #status { margin: 10px; color: #0f0; }
+    body { margin:0; padding:10px; background:#111; color:white; font-family:Arial; text-align:center; }
+    canvas { border:2px solid #0f0; border-radius:12px; max-width:100%; display:block; margin:10px auto; }
+    #status { color:#0f0; margin:10px; }
   </style>
 </head>
 <body>
-  <h1>Pose + Hands Detection</h1>
-  <p id="status">Connecting to server...</p>
+  <h1>Hands + Full Body Pose</h1>
+  <p id="status">Loading...</p>
 
   <video id="video" autoplay playsinline style="display:none;"></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
   <script>
-    const API_URL = "https://poseapi-uboi.onrender.com";  // ← CHANGE THIS
+    const API_URL = "https://poseapi-uboi.onrender.com";   // ← Change if needed
+
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -26,99 +27,120 @@
 
     let lastSent = 0;
 
-    async function start() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: { ideal: 640 }, height: { ideal: 480 } } 
-        });
-        video.srcObject = stream;
-        await video.play();
+    // Pose connections (MoveNet / BlazePose style)
+    const POSE_CONNECTIONS = [
+      [0,1],[0,2],[1,3],[2,4],           // face
+      [5,6],[5,7],[6,8],[7,9],[8,10],    // arms
+      [11,12],[11,13],[12,14],[13,15],[14,16], // legs
+      [5,11],[6,12]                      // body
+    ];
 
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: { ideal: 640 }, height: { ideal: 480 } } 
+      });
+      video.srcObject = stream;
+      await video.play();
 
-        statusEl.textContent = "Running...";
-        loop();
-      } catch (err) {
-        statusEl.textContent = "Camera error: " + err.message;
-      }
+      canvas.width = 640;
+      canvas.height = 480;
+
+      statusEl.textContent = "Connected ✓";
+      requestAnimationFrame(loop);
     }
 
     async function loop() {
+      // Draw mirrored video
       ctx.save();
       ctx.scale(-1, 1);
       ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
 
-      // Send frame to server (max ~12-15 fps)
-      if (Date.now() - lastSent > 70) {
+      if (Date.now() - lastSent > 80) {   // ~12 fps
         lastSent = Date.now();
-        sendFrame();
+        sendToServer();
       }
 
       requestAnimationFrame(loop);
     }
 
-    async function sendFrame() {
+    async function sendToServer() {
       try {
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.65));
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.6));
         const formData = new FormData();
         formData.append('file', blob, 'frame.jpg');
 
-        const res = await fetch(`${API_URL}/detect`, {
-          method: 'POST',
-          body: formData
-        });
-
+        const res = await fetch(`${API_URL}/detect`, { method: 'POST', body: formData });
         const data = await res.json();
 
-        if (data.error) {
-          console.error(data.error);
-          return;
-        }
+        if (data.error) return;
 
-        drawResults(data);
+        drawHands(data.hands);
+        drawPose(data.pose);
       } catch (e) {
-        console.error("Send error", e);
+        console.error(e);
       }
     }
 
-    function drawResults(data) {
-      // Draw hands
+    function drawHands(hands) {
       ctx.strokeStyle = '#00ff00';
       ctx.lineWidth = 3;
-      data.hands.forEach(hand => {
-        hand.landmarks.forEach((lm, i) => {
-          const x = canvas.width - (lm.x * canvas.width);  // mirror
-          const y = lm.y * canvas.height;
+      ctx.fillStyle = '#00ff00';
+
+      hands.forEach(hand => {
+        const points = hand.landmarks;
+        points.forEach((p, i) => {
+          const x = canvas.width - (p.x * canvas.width);
+          const y = p.y * canvas.height;
           ctx.beginPath();
           ctx.arc(x, y, 5, 0, Math.PI * 2);
-          ctx.fillStyle = '#00ff00';
           ctx.fill();
         });
       });
+    }
 
-      // Draw pose
+    function drawPose(pose) {
+      if (!pose || pose.length === 0) return;
+
       ctx.strokeStyle = '#ff00ff';
       ctx.lineWidth = 4;
-      const kps = data.pose;
-      if (kps.length > 0) {
-        // Draw some keypoints
-        kps.forEach((kp, i) => {
-          if (kp.visibility > 0.3) {
-            const x = canvas.width - (kp.x * canvas.width);
-            const y = kp.y * canvas.height;
-            ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#ff00ff';
-            ctx.fill();
-          }
-        });
-      }
+      ctx.fillStyle = '#ff00ff';
+
+      const kps = pose;
+
+      // Draw connections
+      POSE_CONNECTIONS.forEach(([i, j]) => {
+        const a = kps[i];
+        const b = kps[j];
+        if (a && b && a.visibility > 0.3 && b.visibility > 0.3) {
+          const x1 = canvas.width - (a.x * canvas.width);
+          const y1 = a.y * canvas.height;
+          const x2 = canvas.width - (b.x * canvas.width);
+          const y2 = b.y * canvas.height;
+
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+      });
+
+      // Draw joints
+      kps.forEach(kp => {
+        if (kp.visibility > 0.3) {
+          const x = canvas.width - (kp.x * canvas.width);
+          const y = kp.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
     }
 
     // Start
-    start();
+    startCamera().catch(err => {
+      statusEl.textContent = "Error: " + err.message;
+    });
   </script>
 </body>
 </html>
