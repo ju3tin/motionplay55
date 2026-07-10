@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useEffect, useRef } from "react";
 
 import {
@@ -8,353 +7,290 @@ import {
   PoseLandmarker,
   HandLandmarker,
   DrawingUtils
-}
-from "@mediapipe/tasks-vision";
+} from "@mediapipe/tasks-vision";
 
 
+export default function MotionCapture() {
 
-export default function MotionCapture(){
+  const videoRef =
+    useRef<HTMLVideoElement>(null);
 
-const videoRef =
-useRef<HTMLVideoElement>(null);
+  const canvasRef =
+    useRef<HTMLCanvasElement>(null);
 
 
-const canvasRef =
-useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
 
+    let pose: PoseLandmarker;
+    let hands: HandLandmarker;
+    let frame:number;
 
 
-useEffect(()=>{
+    async function start() {
 
-let pose:PoseLandmarker;
-let hands:HandLandmarker;
 
-let animation:number;
+      const vision =
+        await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+        );
 
 
+      pose =
+        await PoseLandmarker.createFromOptions(
+          vision,
+          {
+            baseOptions:{
+              modelAssetPath:
+              "/models/pose_landmarker_lite.task"
+            },
 
-async function start(){
+            runningMode:"VIDEO",
 
+            numPoses:1
+          }
+        );
 
-const vision =
-await FilesetResolver.forVisionTasks(
-"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
-);
 
+      hands =
+        await HandLandmarker.createFromOptions(
+          vision,
+          {
+            baseOptions:{
+              modelAssetPath:
+              "/models/hand_landmarker.task"
+            },
 
+            runningMode:"VIDEO",
 
-pose =
-await PoseLandmarker.createFromOptions(
-vision,
-{
+            numHands:2
+          }
+        );
 
-baseOptions:{
 
-modelAssetPath:
-"/models/pose_landmarker_lite.task"
 
-},
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
 
-runningMode:"VIDEO",
+          video:{
+            facingMode:"user",
+            width:640,
+            height:480
+          }
 
-numPoses:1,
+        });
 
-minPoseDetectionConfidence:0.5,
-minPosePresenceConfidence:0.5,
-minTrackingConfidence:0.5
 
-});
+      if(videoRef.current){
 
+        videoRef.current.srcObject =
+          stream;
 
+        await videoRef.current.play();
 
-hands =
-await HandLandmarker.createFromOptions(
-vision,
-{
+      }
 
-baseOptions:{
 
-modelAssetPath:
-"/models/hand_landmarker.task"
+      loop();
 
-},
+    }
 
-runningMode:"VIDEO",
 
-numHands:2,
 
-minHandDetectionConfidence:0.5,
-minHandPresenceConfidence:0.5,
-minTrackingConfidence:0.5
+    function loop(){
 
-});
 
+      if(!videoRef.current)
+        return;
 
 
-const stream =
-await navigator.mediaDevices.getUserMedia({
+      const video =
+        videoRef.current;
 
-video:{
 
-facingMode:"user",
+      const time =
+        performance.now();
 
-width:640,
-height:480
 
-}
 
-});
+      const poseResult =
+        pose.detectForVideo(
+          video,
+          time
+        );
 
 
+      const handResult =
+        hands.detectForVideo(
+          video,
+          time
+        );
 
-if(videoRef.current){
 
-videoRef.current.srcObject =
-stream;
 
+      // YOUR MOTION DATA
 
-await videoRef.current.play();
+      const motion = {
 
-}
+        timestamp:time,
 
+        body:
+        poseResult.landmarks,
 
+        hands:
+        handResult.landmarks,
 
-loop();
+        handedness:
+        handResult.handedness
 
-}
+      };
 
 
+      console.log(motion);
 
 
 
-function loop(){
+      draw(
+        poseResult,
+        handResult
+      );
 
 
-if(!videoRef.current)
-return;
 
+      frame =
+        requestAnimationFrame(loop);
 
+    }
 
-const video =
-videoRef.current;
 
 
-const time =
-performance.now();
+    function draw(
+      poseResult:any,
+      handResult:any
+    ){
 
+      const canvas =
+        canvasRef.current;
 
 
-const poseResult =
-pose.detectForVideo(
-video,
-time
-);
+      const video =
+        videoRef.current;
 
 
+      if(!canvas || !video)
+        return;
 
-const handResult =
-hands.detectForVideo(
-video,
-time
-);
 
+      canvas.width =
+        video.videoWidth;
 
 
-// motion data for your game
+      canvas.height =
+        video.videoHeight;
 
-const motion = {
 
-timestamp:time,
+      const ctx =
+        canvas.getContext("2d")!;
 
-body:
-poseResult.landmarks,
 
-hands:
-handResult.landmarks,
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
 
-handedness:
-handResult.handedness
 
-};
+      const draw =
+        new DrawingUtils(ctx);
 
 
 
-console.log(motion);
+      if(poseResult.landmarks){
 
+        for(
+          const body of poseResult.landmarks
+        ){
 
+          draw.drawLandmarks(body);
 
-// draw
+          draw.drawConnectors(
+            body,
+            PoseLandmarker.POSE_CONNECTIONS
+          );
 
-const canvas =
-canvasRef.current;
+        }
 
+      }
 
 
-if(canvas){
 
+      if(handResult.landmarks){
 
-canvas.width =
-video.videoWidth;
+        for(
+          const hand of handResult.landmarks
+        ){
 
+          draw.drawLandmarks(hand);
 
-canvas.height =
-video.videoHeight;
+          draw.drawConnectors(
+            hand,
+            HandLandmarker.HAND_CONNECTIONS
+          );
 
+        }
 
+      }
 
-const ctx =
-canvas.getContext("2d")!;
 
+    }
 
-ctx.clearRect(
-0,
-0,
-canvas.width,
-canvas.height
-);
 
 
+    start();
 
-const draw =
-new DrawingUtils(ctx);
 
+    return()=>{
 
+      cancelAnimationFrame(frame);
 
-// BODY
+    };
 
-if(poseResult.landmarks){
 
+  },[]);
 
-for(
-const landmark of poseResult.landmarks
-){
 
 
-draw.drawLandmarks(
-landmark
-);
+  return (
 
+    <div
+    style={{
+      position:"relative"
+    }}
+    >
 
-draw.drawConnectors(
-landmark,
-PoseLandmarker.POSE_CONNECTIONS
-);
+      <video
+      ref={videoRef}
+      muted
+      playsInline
+      style={{
+        width:"100%"
+      }}
+      />
 
 
-}
+      <canvas
+      ref={canvasRef}
+      style={{
+        position:"absolute",
+        left:0,
+        top:0,
+        width:"100%"
+      }}
+      />
 
-}
 
+    </div>
 
-
-// HANDS
-
-if(handResult.landmarks){
-
-
-for(
-const hand of handResult.landmarks
-){
-
-
-draw.drawLandmarks(
-hand
-);
-
-
-draw.drawConnectors(
-hand,
-HandLandmarker.HAND_CONNECTIONS
-);
-
-
-}
-
-}
-
-
-}
-
-
-
-animation =
-requestAnimationFrame(loop);
-
-
-}
-
-
-
-
-
-start();
-
-
-
-return()=>{
-
-
-cancelAnimationFrame(animation);
-
-
-};
-
-
-
-},[]);
-
-
-
-return(
-
-<div
-style={{
-position:"relative",
-width:"100%"
-}}
->
-
-
-<video
-
-ref={videoRef}
-
-playsInline
-
-muted
-
-style={{
-
-width:"100%"
-
-}}
-
-/>
-
-
-
-<canvas
-
-ref={canvasRef}
-
-style={{
-
-position:"absolute",
-
-left:0,
-
-top:0,
-
-width:"100%"
-
-}}
-
-/>
-
-
-</div>
-
-);
-
+  );
 
 }
