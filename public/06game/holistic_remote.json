@@ -1,0 +1,12 @@
+{
+  "source": [
+    {
+      "path": "holistic_remote.pbtxt",
+      "runnable": true
+    }
+  ],
+  "binaryGraph": "holistic_remote.binarypb",
+  "basePath": "",
+  "camera": { "width": 1280, "height": 720 },
+  "helpPage": "instructions/instructions.html"
+}
