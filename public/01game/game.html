@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>TensorFlow Multiplayer Game</title>
+
+<style>
+
+body {
+    background:#111;
+    color:white;
+    font-family:Arial;
+}
+
+#screen {
+    position:relative;
+    width:640px;
+    height:480px;
+}
+
+video, canvas {
+
+    position:absolute;
+    left:0;
+    top:0;
+
+}
+
+video, canvas {
+
+    width:640px;
+    height:480px;
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<h1>
+Game Player
+</h1>
+
+
+<div id="screen">
+
+<video
+id="video"
+autoplay
+playsinline>
+</video>
+
+
+<canvas
+id="canvas"
+width="640"
+height="480">
+</canvas>
+
+
+</div>
+
+
+<h3 id="status">
+Loading...
+</h3>
+
+
+<h3 id="players">
+Players: 0
+</h3>
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+
+<script type="module" src="./js/game.js"></script>
+
+
+</body>
+
+</html>
