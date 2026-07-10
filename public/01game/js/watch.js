@@ -1,16 +1,138 @@
 import socket from "./websocket.js";
 
 
-const canvas =
-document.getElementById("canvas");
+import * as THREE from
+"https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
 
 
-const ctx =
-canvas.getContext("2d");
+
+const scene =
+new THREE.Scene();
 
 
-const playersText =
-document.getElementById("players");
+
+const camera =
+new THREE.PerspectiveCamera(
+
+45,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
+
+);
+
+
+camera.position.z=5;
+
+
+
+const renderer =
+new THREE.WebGLRenderer();
+
+
+renderer.setSize(
+window.innerWidth,
+window.innerHeight
+);
+
+
+document.body.appendChild(
+renderer.domElement
+);
+
+
+
+
+
+let avatars={};
+
+
+
+
+
+function createAvatar()
+{
+
+const group =
+new THREE.Group();
+
+
+
+const material =
+new THREE.LineBasicMaterial();
+
+
+
+const geometry =
+new THREE.BufferGeometry();
+
+
+
+const points=[
+
+new THREE.Vector3(0,1,0),
+
+new THREE.Vector3(0,0,0),
+
+new THREE.Vector3(0,-1,0)
+
+];
+
+
+
+geometry.setFromPoints(points);
+
+
+const body =
+new THREE.Line(
+geometry,
+material
+);
+
+
+group.add(body);
+
+
+
+scene.add(group);
+
+
+
+return group;
+
+}
+
+
+
+
+
+function updateAvatar(
+avatar,
+pose
+)
+{
+
+if(!pose)
+return;
+
+
+
+// simple body height mapping
+
+let head =
+pose[0];
+
+
+if(head)
+{
+
+avatar.position.y =
+-(head.y/100);
+
+}
+
+
+}
 
 
 
@@ -28,20 +150,43 @@ if(data.type==="state")
 {
 
 
-playersText.innerHTML =
+document.getElementById(
+"players"
+).innerHTML =
 "Players: "
-+
-data.playerCount;
++data.playerCount;
 
 
 
-drawPlayers(
-data.players
+data.players.forEach(player=>{
+
+
+if(!avatars[player.id])
+{
+
+avatars[player.id]=
+createAvatar();
+
+}
+
+
+
+updateAvatar(
+
+avatars[player.id],
+
+player.pose
+
 );
 
 
 
+});
+
+
+
 }
+
 
 
 };
@@ -50,62 +195,20 @@ data.players
 
 
 
-
-function drawPlayers(players)
+function animate()
 {
 
-
-ctx.clearRect(
-0,
-0,
-640,
-480
+requestAnimationFrame(
+animate
 );
 
 
-
-players.forEach(player=>{
-
-
-if(!player.pose)
-return;
-
-
-
-player.pose.forEach(point=>{
-
-
-if(point.score>.5)
-{
-
-
-ctx.beginPath();
-
-
-ctx.arc(
-
-point.x,
-point.y,
-6,
-0,
-Math.PI*2
-
+renderer.render(
+scene,
+camera
 );
-
-
-ctx.fill();
-
-
 
 }
 
 
-});
-
-
-
-});
-
-
-
-}
+animate();
