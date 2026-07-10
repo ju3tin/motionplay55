@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MoveNet Multiplayer Skeleton</title>
+
+    <style>
+
+        body {
+            background: #111;
+            color: white;
+            font-family: Arial;
+        }
+
+        #container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+        }
+
+        video {
+            position: absolute;
+            width: 640px;
+            height: 480px;
+            transform: scaleX(-1);
+        }
+
+        canvas {
+            position: absolute;
+            width: 640px;
+            height: 480px;
+            transform: scaleX(-1);
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<h2>
+TensorFlow.js MoveNet Multiplayer
+</h2>
+
+
+<div id="container">
+
+    <video
+        id="video"
+        autoplay
+        playsinline>
+    </video>
+
+
+    <canvas
+        id="canvas"
+        width="640"
+        height="480">
+    </canvas>
+
+</div>
+
+
+<p id="status">
+Starting...
+</p>
+
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+
+<!-- MoveNet -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+
+<!-- Your app -->
+<script src="main.js"></script>
+
+
+</body>
+</html>
