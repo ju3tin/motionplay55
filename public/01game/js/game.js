@@ -4,64 +4,89 @@ import socket from "./websocket.js";
 const video =
 document.getElementById("video");
 
-
 const canvas =
 document.getElementById("canvas");
 
-
 const ctx =
 canvas.getContext("2d");
-
-
-const status =
-document.getElementById("status");
-
 
 
 let detector;
 
 
 
+function log(name,data)
+{
+    console.log(
+        `[GAME] ${name}`,
+        data
+    );
+}
+
+
+
 socket.onopen=()=>{
 
+    log(
+        "WebSocket connected"
+    );
 
-socket.send(JSON.stringify({
 
-type:"tf_ready"
+    socket.send(JSON.stringify({
 
-}));
+        type:"tf_ready"
 
+    }));
+
+
+    log(
+        "Sent TensorFlow ready"
+    );
+
+};
+
+
+
+socket.onmessage=(event)=>{
+
+    const data =
+    JSON.parse(event.data);
+
+
+    log(
+        "SERVER MESSAGE",
+        data
+    );
 
 
 };
 
 
 
-async function startCamera()
+
+
+async function camera()
 {
 
-const stream =
-await navigator.mediaDevices
-.getUserMedia({
+    const stream =
+    await navigator.mediaDevices
+    .getUserMedia({
 
-video:{
-width:640,
-height:480
-}
+        video:{
+            width:640,
+            height:480
+        }
 
-});
-
-
-video.srcObject =
-stream;
+    });
 
 
-return new Promise(resolve=>{
+    video.srcObject =
+    stream;
 
-video.onloadedmetadata =
-()=>resolve();
 
-});
+    log(
+        "Camera started"
+    );
 
 }
 
@@ -69,116 +94,43 @@ video.onloadedmetadata =
 
 
 
-function drawSkeleton(points)
+function draw(points)
 {
 
-ctx.clearRect(
-0,
-0,
-640,
-480
-);
+    ctx.clearRect(
+        0,
+        0,
+        640,
+        480
+    );
 
 
-
-points.forEach(point=>{
-
-
-if(point.score > .5)
-{
+    points.forEach(p=>{
 
 
-ctx.beginPath();
+        if(p.score>.5)
+        {
+
+            ctx.beginPath();
+
+            ctx.arc(
+                p.x,
+                p.y,
+                5,
+                0,
+                Math.PI*2
+            );
 
 
-ctx.arc(
+            ctx.fill();
 
-point.x,
-point.y,
-6,
-0,
-Math.PI*2
-
-);
+        }
 
 
-ctx.fill();
-
-
-}
-
-});
-
-
-
-const bones=[
-
-[5,6],
-
-[5,7],
-[7,9],
-
-[6,8],
-[8,10],
-
-[5,11],
-[6,12],
-
-[11,13],
-[13,15],
-
-[12,14],
-[14,16]
-
-];
-
-
-
-bones.forEach(b=>{
-
-
-const a =
-points[b[0]];
-
-
-const c =
-points[b[1]];
-
-
-
-if(
-a.score>.5 &&
-c.score>.5
-)
-{
-
-
-ctx.beginPath();
-
-
-ctx.moveTo(
-a.x,
-a.y
-);
-
-
-ctx.lineTo(
-c.x,
-c.y
-);
-
-
-ctx.stroke();
+    });
 
 
 }
-
-
-});
-
-
-}
-
 
 
 
@@ -187,72 +139,64 @@ function sendPose(points)
 {
 
 
-if(socket.readyState !== WebSocket.OPEN)
-return;
+    const pose =
+    points.map(p=>({
+
+        x:p.x,
+        y:p.y,
+        score:p.score
+
+    }));
 
 
 
-socket.send(JSON.stringify({
-
-type:"pose",
-
-keypoints:
-
-points.map(p=>({
-
-x:p.x,
-
-y:p.y,
-
-score:p.score
-
-}))
-
-
-}));
+    log(
+        "Sending pose",
+        pose
+    );
 
 
 
-}
+    socket.send(JSON.stringify({
 
+        type:"pose",
 
+        keypoints:pose
 
-
-
-async function detectLoop()
-{
-
-
-const poses =
-await detector.estimatePoses(video);
-
-
-
-if(poses.length)
-{
-
-
-const points =
-poses[0].keypoints;
-
-
-
-drawSkeleton(points);
-
-
-sendPose(points);
-
-
+    }));
 
 }
 
 
 
-requestAnimationFrame(
-detectLoop
-);
 
 
+async function loop()
+{
+
+    const poses =
+    await detector
+    .estimatePoses(video);
+
+
+
+    if(poses.length)
+    {
+
+        let points =
+        poses[0].keypoints;
+
+
+        draw(points);
+
+
+        sendPose(points);
+
+
+    }
+
+
+    requestAnimationFrame(loop);
 
 }
 
@@ -263,36 +207,34 @@ detectLoop
 async function start()
 {
 
+    await camera();
 
-await startCamera();
+
+    detector =
+    await poseDetection
+    .createDetector(
+
+        poseDetection.SupportedModels.MoveNet,
+
+        {
+        modelType:
+        poseDetection.movenet.modelType
+        .SINGLEPOSE_LIGHTNING
+        }
+
+    );
 
 
-detector =
-await poseDetection.createDetector(
 
-poseDetection.SupportedModels.MoveNet,
+    log(
+        "MoveNet loaded"
+    );
 
-{
 
-modelType:
-poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+    loop();
 
 }
 
-);
 
 
-
-status.innerHTML =
-"MoveNet running";
-
-
-}
-
-
-
-start().then(()=>{
-
-detectLoop();
-
-});
+start();
