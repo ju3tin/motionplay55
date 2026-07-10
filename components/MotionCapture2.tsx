@@ -11,7 +11,7 @@ import {
 
 export default function MotionCapture2() {
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
 
   useEffect(() => {
@@ -19,8 +19,7 @@ export default function MotionCapture2() {
     let pose: PoseLandmarker | null = null;
     let hands: HandLandmarker | null = null;
 
-    let animation: number | undefined;
-
+    let animation: number | null = null;
 
     let latestPose: any = null;
     let latestHands: any = null;
@@ -37,7 +36,6 @@ export default function MotionCapture2() {
 
     async function start() {
 
-
       const vision =
         await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
@@ -49,26 +47,18 @@ export default function MotionCapture2() {
         await PoseLandmarker.createFromOptions(
           vision,
           {
-
             baseOptions: {
-
               modelAssetPath:
-                "/models/pose_landmarker_lite.task"
-
+                "/models/pose_landmarker_lite.task",
             },
-
 
             runningMode: "VIDEO",
 
             numPoses: 1,
 
-
             minPoseDetectionConfidence: 0.5,
-
             minPosePresenceConfidence: 0.5,
-
-            minTrackingConfidence: 0.5
-
+            minTrackingConfidence: 0.5,
           }
         );
 
@@ -78,50 +68,37 @@ export default function MotionCapture2() {
         await HandLandmarker.createFromOptions(
           vision,
           {
-
             baseOptions: {
-
               modelAssetPath:
-                "/models/hand_landmarker.task"
-
+                "/models/hand_landmarker.task",
             },
-
 
             runningMode: "VIDEO",
 
             numHands: 2,
 
-
             minHandDetectionConfidence: 0.5,
-
             minHandPresenceConfidence: 0.5,
-
-            minTrackingConfidence: 0.5
-
+            minTrackingConfidence: 0.5,
           }
         );
 
 
 
-
       const stream =
-        await navigator.mediaDevices.getUserMedia({
-
-          video: {
-
-            width: 320,
-
-            height: 240,
-
-            facingMode: "user"
-
+        await navigator.mediaDevices.getUserMedia(
+          {
+            video: {
+              width: 320,
+              height: 240,
+              facingMode: "user",
+            },
           }
-
-        });
-
+        );
 
 
-      if(videoRef.current){
+
+      if (videoRef.current) {
 
         videoRef.current.srcObject = stream;
 
@@ -139,7 +116,7 @@ export default function MotionCapture2() {
 
 
 
-    function loop(){
+    function loop() {
 
 
       const video =
@@ -147,7 +124,7 @@ export default function MotionCapture2() {
 
 
 
-      if(!video || !pose || !hands){
+      if (!video || !pose || !hands) {
 
         animation =
           requestAnimationFrame(loop);
@@ -164,20 +141,17 @@ export default function MotionCapture2() {
 
 
 
+      // ------------------------
+      // Pose detection 15 FPS
+      // ------------------------
 
-      // ---------------------
-      // POSE @ 15 FPS
-      // ---------------------
-
-      if(now - lastPoseTime >= POSE_INTERVAL){
-
+      if (now - lastPoseTime >= POSE_INTERVAL) {
 
         latestPose =
           pose.detectForVideo(
             video,
             now
           );
-
 
         lastPoseTime = now;
 
@@ -186,19 +160,17 @@ export default function MotionCapture2() {
 
 
 
-      // ---------------------
-      // HANDS @ 8 FPS
-      // ---------------------
+      // ------------------------
+      // Hand detection 8 FPS
+      // ------------------------
 
-      if(now - lastHandTime >= HAND_INTERVAL){
-
+      if (now - lastHandTime >= HAND_INTERVAL) {
 
         latestHands =
           hands.detectForVideo(
             video,
             now
           );
-
 
         lastHandTime = now;
 
@@ -207,43 +179,35 @@ export default function MotionCapture2() {
 
 
 
-      // ---------------------
-      // MOTION DATA
-      // ---------------------
+
+      // ------------------------
+      // Motion packet
+      // ------------------------
 
       const motion = {
 
         timestamp: now,
 
-
         body:
           latestPose?.landmarks?.[0] ?? null,
-
 
         hands:
           latestHands?.landmarks ?? null,
 
-
         handedness:
-          latestHands?.handedness ?? null
+          latestHands?.handedness ?? null,
 
       };
 
 
 
-
-      // Temporary output
-      // Replace with websocket.send()
-
+      // Replace this with websocket.send()
       window.postMessage(
-
         {
           type: "MOTION_DATA",
-          data: motion
+          data: motion,
         },
-
         "*"
-
       );
 
 
@@ -266,7 +230,7 @@ export default function MotionCapture2() {
     return () => {
 
 
-      if(animation){
+      if (animation !== null) {
 
         cancelAnimationFrame(animation);
 
@@ -274,24 +238,21 @@ export default function MotionCapture2() {
 
 
 
-      if(videoRef.current){
+      if (videoRef.current) {
 
 
         const stream =
-          videoRef.current.srcObject
-          as MediaStream | null;
+          videoRef.current.srcObject as MediaStream | null;
 
 
 
-        if(stream){
+        if (stream) {
 
-          stream
-          .getTracks()
-          .forEach(track => {
-
-            track.stop();
-
-          });
+          stream.getTracks().forEach(
+            (track) => {
+              track.stop();
+            }
+          );
 
         }
 
@@ -316,29 +277,17 @@ export default function MotionCapture2() {
 
     <div>
 
-
       <video
-
         ref={videoRef}
-
         autoPlay
-
         muted
-
         playsInline
-
         style={{
-
           width: "320px",
-
           height: "240px",
-
-          background: "black"
-
+          background: "black",
         }}
-
       />
-
 
     </div>
 
