@@ -10,7 +10,7 @@ export default function Home(){
         Dance Motion Capture
       </h1>
 
-      <MotionCapture/>
+      <MotionCapture3/>
 
     </main>
   );
