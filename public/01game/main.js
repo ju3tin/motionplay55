@@ -1,45 +1,74 @@
-import {send} from "./websocket.js";
-
-import {
-    loadMoveNet,
-    detect
-}
-from "./movenet.js";
-
-
-
 const video =
 document.getElementById("video");
 
+const canvas =
+document.getElementById("canvas");
 
-const status =
-document.getElementById("status");
+const ctx =
+canvas.getContext("2d");
+
+
+// WebSocket connection
+const socket = new WebSocket(
+    "wss://tensorflowjs-multiplayer-backend-1.onrender.com"
+);
+
+
+socket.onopen = ()=>{
+
+    console.log("WebSocket connected");
+
+    socket.send(JSON.stringify({
+        type:"tf_ready"
+    }));
+
+};
+
+
+socket.onmessage = (event)=>{
+
+    const data =
+    JSON.parse(event.data);
+
+    console.log(
+        "Server:",
+        data
+    );
+
+};
 
 
 
-async function startCamera()
+let detector;
+
+
+
+async function setupCamera()
 {
 
     const stream =
-        await navigator.mediaDevices
-        .getUserMedia({
+    await navigator.mediaDevices
+    .getUserMedia({
 
-            video:{
-                width:640,
-                height:480
-            }
+        video:{
+            width:640,
+            height:480
+        }
 
-        });
+    });
 
 
     video.srcObject =
-        stream;
+    stream;
 
 
     return new Promise(resolve=>{
 
-        video.onloadedmetadata =
-        ()=>resolve();
+        video.onloadedmetadata=()=>{
+
+            resolve();
+
+        };
 
     });
 
@@ -47,25 +76,158 @@ async function startCamera()
 
 
 
-async function start()
+function drawSkeleton(points)
 {
 
-    await startCamera();
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
 
 
-    await loadMoveNet();
+    // Draw joints
 
+    points.forEach(p=>{
 
-    status.innerHTML =
-        "MoveNet running";
+        if(p.score > 0.5)
+        {
 
+            ctx.beginPath();
 
-    send({
+            ctx.arc(
+                p.x,
+                p.y,
+                6,
+                0,
+                Math.PI*2
+            );
 
-        type:"tf_ready"
+            ctx.fill();
+
+        }
 
     });
 
+
+
+    // Bones
+
+    const bones=[
+
+        [5,6],
+
+        [5,7],
+        [7,9],
+
+        [6,8],
+        [8,10],
+
+        [5,11],
+        [6,12],
+
+        [11,13],
+        [13,15],
+
+        [12,14],
+        [14,16]
+
+    ];
+
+
+
+    bones.forEach(b=>{
+
+        const a =
+        points[b[0]];
+
+        const c =
+        points[b[1]];
+
+
+        if(
+            a.score > .5 &&
+            c.score > .5
+        )
+        {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                a.x,
+                a.y
+            );
+
+            ctx.lineTo(
+                c.x,
+                c.y
+            );
+
+            ctx.stroke();
+
+        }
+
+    });
+
+}
+
+
+
+
+function sendPose(points)
+{
+
+    if(socket.readyState !== WebSocket.OPEN)
+        return;
+
+
+    socket.send(JSON.stringify({
+
+        type:"pose",
+
+        keypoints:
+
+        points.map(p=>({
+
+            x:p.x,
+            y:p.y,
+            score:p.score
+
+        }))
+
+    }));
+
+}
+
+
+
+
+
+async function run()
+{
+
+    await setupCamera();
+
+
+    detector =
+    await poseDetection.createDetector(
+
+        poseDetection.SupportedModels.MoveNet,
+
+        {
+
+        modelType:
+        poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+
+        }
+
+    );
+
+
+    console.log(
+        "MoveNet ready"
+    );
 
 
     detectLoop();
@@ -74,31 +236,28 @@ async function start()
 
 
 
+
 async function detectLoop()
 {
 
-    const keypoints =
-        await detect(video);
+    const poses =
+    await detector.estimatePoses(video);
 
 
 
-    if(keypoints)
+    if(poses.length)
     {
 
-        send({
+        const points =
+        poses[0].keypoints;
 
-            type:"pose",
 
-            keypoints:
-                keypoints.map(k=>({
+        // local skeleton
+        drawSkeleton(points);
 
-                    x:k.x,
-                    y:k.y,
-                    score:k.score
 
-                }))
-
-        });
+        // send to server
+        sendPose(points);
 
     }
 
@@ -111,4 +270,4 @@ async function detectLoop()
 
 
 
-start();
+run();
