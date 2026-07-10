@@ -5,37 +5,150 @@ import * as THREE from
 export function createAvatar()
 {
 
-let group =
-new THREE.Group();
+    const group =
+    new THREE.Group();
+
+
+    const material =
+    new THREE.MeshNormalMaterial();
 
 
 
-let mat =
-new THREE.MeshBasicMaterial();
+    // head
+
+    const head =
+    new THREE.Mesh(
+
+        new THREE.SphereGeometry(
+            0.25,
+            16,
+            16
+        ),
+
+        material
+
+    );
 
 
-let body =
-new THREE.Mesh(
-
-new THREE.BoxGeometry(
-.4,
-1,
-.3
-),
-
-mat
-
-);
+    head.position.y = 2;
 
 
-group.add(body);
+    group.add(head);
 
 
 
-return group;
+    // body
+
+    const body =
+    new THREE.Mesh(
+
+        new THREE.BoxGeometry(
+            0.5,
+            1,
+            0.3
+        ),
+
+        material
+
+    );
+
+
+    body.position.y = 1.2;
+
+
+    group.add(body);
+
+
+
+    // arms
+
+    const armGeometry =
+    new THREE.BoxGeometry(
+        0.12,
+        0.8,
+        0.12
+    );
+
+
+    const leftArm =
+    new THREE.Mesh(
+        armGeometry,
+        material
+    );
+
+
+    leftArm.position.set(
+        -0.45,
+        1.3,
+        0
+    );
+
+
+    group.add(leftArm);
+
+
+
+    const rightArm =
+    new THREE.Mesh(
+        armGeometry,
+        material
+    );
+
+
+    rightArm.position.set(
+        0.45,
+        1.3,
+        0
+    );
+
+
+    group.add(rightArm);
+
+
+
+    // legs
+
+    const legGeometry =
+    new THREE.BoxGeometry(
+        0.15,
+        0.9,
+        0.15
+    );
+
+
+    const leftLeg =
+    new THREE.Mesh(
+        legGeometry,
+        material
+    );
+
+
+    leftLeg.position.set(
+        -0.18,
+        0.2,
+        0
+    );
+
+
+    group.add(leftLeg);
+
+
+
+    const rightLeg =
+    leftLeg.clone();
+
+
+    rightLeg.position.x =
+    0.18;
+
+
+    group.add(rightLeg);
+
+
+
+    return group;
 
 }
-
 
 
 
@@ -46,17 +159,15 @@ joints
 )
 {
 
-
-if(!joints)
-return;
-
+    if(!joints)
+        return;
 
 
-avatar.rotation.x =
-joints.leftShoulder
-*
-Math.PI/180;
+    // test movement
 
+    avatar.rotation.y =
+    joints.leftShoulder *
+    Math.PI/180;
 
 
 }
