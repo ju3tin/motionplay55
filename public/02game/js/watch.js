@@ -16,17 +16,32 @@ const scene =
 new THREE.Scene();
 
 
+scene.background =
+new THREE.Color(0x202020);
+
+
 
 const camera =
 new THREE.PerspectiveCamera(
+
 60,
-innerWidth/innerHeight,
+
+window.innerWidth /
+window.innerHeight,
+
 0.1,
+
 1000
+
 );
 
 
-camera.position.z=5;
+
+camera.position.set(
+0,
+2,
+6
+);
 
 
 
@@ -35,8 +50,8 @@ new THREE.WebGLRenderer();
 
 
 renderer.setSize(
-innerWidth,
-innerHeight
+window.innerWidth,
+window.innerHeight
 );
 
 
@@ -46,15 +61,46 @@ renderer.domElement
 
 
 
+// floor
+
+const floor =
+new THREE.Mesh(
+
+new THREE.PlaneGeometry(
+20,
+20
+),
+
+new THREE.MeshNormalMaterial()
+
+);
+
+
+floor.rotation.x =
+-Math.PI/2;
+
+
+scene.add(floor);
+
+
+
+
+
 let players={};
 
 
 
-socket.onmessage=e=>{
+socket.onmessage=(event)=>{
 
 
-let data =
-JSON.parse(e.data);
+const data =
+JSON.parse(event.data);
+
+
+console.log(
+"SERVER",
+data
+);
 
 
 
@@ -62,30 +108,47 @@ if(data.type==="state")
 {
 
 
-data.players.forEach(p=>{
+data.players.forEach(player=>{
 
 
-if(!players[p.id])
+if(!players[player.id])
 {
 
-players[p.id]=
+console.log(
+"Creating avatar",
+player.id
+);
+
+
+players[player.id] =
 createAvatar();
 
+
 scene.add(
-players[p.id]
+players[player.id]
 );
+
+
+players[player.id].position.x =
+Object.keys(players).length-1;
+
 
 }
 
 
 
 animateAvatar(
-players[p.id],
-p.joints
+
+players[player.id],
+
+player.joints
+
 );
 
 
+
 });
+
 
 
 }
@@ -97,12 +160,10 @@ p.joints
 
 
 
-function animate()
+function loop()
 {
 
-requestAnimationFrame(
-animate
-);
+requestAnimationFrame(loop);
 
 
 renderer.render(
@@ -113,4 +174,4 @@ camera
 }
 
 
-animate();
+loop();
