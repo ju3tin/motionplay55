@@ -1,5 +1,5 @@
 const socket = new WebSocket(
-    "wss://YOUR-RENDER-URL.onrender.com"
+    "wss://tensorflowjs-multiplayer-backend-1.onrender.com"
 );
 
 
