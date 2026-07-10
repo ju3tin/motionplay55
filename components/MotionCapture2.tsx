@@ -1,393 +1,347 @@
 "use client";
 
-
-import {useEffect,useRef} from "react";
-
+import { useEffect, useRef } from "react";
 
 import {
-
-FilesetResolver,
-PoseLandmarker,
-HandLandmarker
-
+  FilesetResolver,
+  PoseLandmarker,
+  HandLandmarker,
 } from "@mediapipe/tasks-vision";
 
 
+export default function MotionCapture2() {
 
-export default function MotionCapture2(){
+  const videoRef = useRef<HTMLVideoElement>(null);
 
 
-const videoRef =
-useRef<HTMLVideoElement>(null);
+  useEffect(() => {
 
+    let pose: PoseLandmarker | null = null;
+    let hands: HandLandmarker | null = null;
 
+    let animation: number | undefined;
 
-useEffect(()=>{
 
+    let latestPose: any = null;
+    let latestHands: any = null;
 
-let pose:PoseLandmarker;
 
-let hands:HandLandmarker;
+    let lastPoseTime = 0;
+    let lastHandTime = 0;
 
-let animation:number;
 
+    const POSE_INTERVAL = 1000 / 15; // 15 FPS
+    const HAND_INTERVAL = 1000 / 8;  // 8 FPS
 
 
-let latestPose:any = null;
 
-let latestHands:any = null;
+    async function start() {
 
 
+      const vision =
+        await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+        );
 
-let lastPoseTime = 0;
 
-let lastHandTime = 0;
 
+      pose =
+        await PoseLandmarker.createFromOptions(
+          vision,
+          {
 
+            baseOptions: {
 
-const POSE_INTERVAL =
-1000 / 15; // 15 FPS
+              modelAssetPath:
+                "/models/pose_landmarker_lite.task"
 
+            },
 
-const HAND_INTERVAL =
-1000 / 8; // 8 FPS
 
+            runningMode: "VIDEO",
 
+            numPoses: 1,
 
-async function start(){
 
+            minPoseDetectionConfidence: 0.5,
 
-const vision =
-await FilesetResolver.forVisionTasks(
+            minPosePresenceConfidence: 0.5,
 
-"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+            minTrackingConfidence: 0.5
 
-);
+          }
+        );
 
 
 
-pose =
-await PoseLandmarker.createFromOptions(
+      hands =
+        await HandLandmarker.createFromOptions(
+          vision,
+          {
 
-vision,
+            baseOptions: {
 
-{
+              modelAssetPath:
+                "/models/hand_landmarker.task"
 
-baseOptions:{
+            },
 
-modelAssetPath:
 
-"/models/pose_landmarker_lite.task"
+            runningMode: "VIDEO",
 
-},
+            numHands: 2,
 
 
-runningMode:"VIDEO",
+            minHandDetectionConfidence: 0.5,
 
+            minHandPresenceConfidence: 0.5,
 
-numPoses:1,
+            minTrackingConfidence: 0.5
 
+          }
+        );
 
-minPoseDetectionConfidence:0.5,
 
-minPosePresenceConfidence:0.5,
 
-minTrackingConfidence:0.5
 
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
 
-}
+          video: {
 
-);
+            width: 320,
 
+            height: 240,
 
+            facingMode: "user"
 
-hands =
-await HandLandmarker.createFromOptions(
+          }
 
-vision,
+        });
 
-{
 
-baseOptions:{
 
-modelAssetPath:
+      if(videoRef.current){
 
-"/models/hand_landmarker.task"
+        videoRef.current.srcObject = stream;
 
-},
+        await videoRef.current.play();
 
+      }
 
-runningMode:"VIDEO",
 
 
-numHands:2,
+      loop();
 
+    }
 
-minHandDetectionConfidence:0.5,
 
-minHandPresenceConfidence:0.5,
 
-minTrackingConfidence:0.5
 
 
-}
+    function loop(){
 
-);
 
+      const video =
+        videoRef.current;
 
 
 
-const stream =
+      if(!video || !pose || !hands){
 
-await navigator.mediaDevices.getUserMedia({
+        animation =
+          requestAnimationFrame(loop);
 
-video:{
+        return;
 
-width:320,
+      }
 
-height:240,
 
-facingMode:"user"
 
-}
+      const now =
+        performance.now();
 
-});
 
 
 
 
-if(videoRef.current){
+      // ---------------------
+      // POSE @ 15 FPS
+      // ---------------------
 
+      if(now - lastPoseTime >= POSE_INTERVAL){
 
-videoRef.current.srcObject =
-stream;
 
+        latestPose =
+          pose.detectForVideo(
+            video,
+            now
+          );
 
-await videoRef.current.play();
 
+        lastPoseTime = now;
 
-}
+      }
 
 
 
-loop();
 
+      // ---------------------
+      // HANDS @ 8 FPS
+      // ---------------------
 
-}
+      if(now - lastHandTime >= HAND_INTERVAL){
 
 
+        latestHands =
+          hands.detectForVideo(
+            video,
+            now
+          );
 
 
-function loop(){
+        lastHandTime = now;
 
+      }
 
-const video =
-videoRef.current;
 
 
-if(!video){
 
-animation =
-requestAnimationFrame(loop);
+      // ---------------------
+      // MOTION DATA
+      // ---------------------
 
-return;
+      const motion = {
 
-}
+        timestamp: now,
 
 
+        body:
+          latestPose?.landmarks?.[0] ?? null,
 
-const now =
-performance.now();
 
+        hands:
+          latestHands?.landmarks ?? null,
 
 
+        handedness:
+          latestHands?.handedness ?? null
 
-//
-// POSE 15 FPS
-//
+      };
 
-if(
-now - lastPoseTime >= POSE_INTERVAL
-){
 
 
-latestPose =
 
-pose.detectForVideo(
+      // Temporary output
+      // Replace with websocket.send()
 
-video,
+      window.postMessage(
 
-now
+        {
+          type: "MOTION_DATA",
+          data: motion
+        },
 
-);
+        "*"
 
+      );
 
-lastPoseTime = now;
 
 
-}
+      animation =
+        requestAnimationFrame(loop);
 
+    }
 
 
 
-//
-// HANDS 8 FPS
-//
 
-if(
-now - lastHandTime >= HAND_INTERVAL
-){
 
+    start();
 
-latestHands =
 
-hands.detectForVideo(
 
-video,
 
-now
 
-);
+    return () => {
 
 
-lastHandTime = now;
+      if(animation){
 
+        cancelAnimationFrame(animation);
 
-}
+      }
 
 
 
+      if(videoRef.current){
 
-//
-// MOTION PACKET
-//
 
-const motion = {
+        const stream =
+          videoRef.current.srcObject
+          as MediaStream | null;
 
 
-timestamp:now,
 
+        if(stream){
 
-body:
+          stream
+          .getTracks()
+          .forEach(track => {
 
-latestPose?.landmarks?.[0]
+            track.stop();
 
-?? null,
+          });
 
+        }
 
 
-hands:
 
-latestHands?.landmarks
+        videoRef.current.srcObject = null;
 
-?? null,
+      }
 
 
+    };
 
-handedness:
 
-latestHands?.handedness
 
-?? null
+  }, []);
 
 
-};
 
 
 
+  return (
 
-// TEMP OUTPUT
-// Replace this with WebSocket later
+    <div>
 
-window.postMessage(
 
-{
+      <video
 
-type:"MOTION_DATA",
+        ref={videoRef}
 
-data:motion
+        autoPlay
 
-},
+        muted
 
-"*"
+        playsInline
 
-);
+        style={{
 
+          width: "320px",
 
+          height: "240px",
 
-animation =
-requestAnimationFrame(loop);
+          background: "black"
 
+        }}
 
-}
+      />
 
 
+    </div>
 
-
-
-start();
-
-
-
-return()=>{
-
-
-cancelAnimationFrame(animation);
-
-
-if(videoRef.current){
-
-const stream =
-videoRef.current.srcObject
-as MediaStream;
-
-
-stream?.getTracks()
-.forEach(
-track=>track.stop()
-);
-
-}
-
-
-};
-
-
-},[]);
-
-
-
-
-return (
-
-<div>
-
-
-<video
-
-ref={videoRef}
-
-muted
-
-playsInline
-
-style={{
-
-width:"320px",
-
-height:"240px",
-
-background:"#000"
-
-}}
-
-/>
-
-
-
-</div>
-
-);
-
+  );
 
 }
